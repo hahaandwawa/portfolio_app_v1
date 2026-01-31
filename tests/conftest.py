@@ -52,6 +52,7 @@ from app.domain.models import (
 )
 from app.domain.views import Quote
 from app.core.timezone import EASTERN_TZ
+from app.config.settings import reset_settings
 
 
 # =============================================================================
@@ -85,6 +86,9 @@ def fixed_now() -> datetime:
 @pytest.fixture(scope="function")
 def test_engine():
     """Create test database engine with shared in-memory SQLite."""
+    # Reset settings for clean state
+    reset_settings()
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
