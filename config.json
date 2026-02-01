@@ -1,0 +1,4 @@
+{
+    "TransactionDBPath": "./data/transactions.sqlite",
+    "AccountDBPath": "./data/accounts.sqlite"
+}

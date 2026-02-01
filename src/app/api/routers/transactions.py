@@ -1,249 +1,156 @@
-"""Transaction management endpoints."""
-
+import math
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
-import tempfile
-import os
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Query, HTTPException
 
-from app.api.deps import (
-    get_ledger_service,
-    get_portfolio_engine,
-    get_csv_importer,
-    get_csv_exporter,
-    get_csv_template_generator,
-)
-from app.api.schemas import (
-    TransactionCreateRequest,
-    TransactionUpdateRequest,
-    TransactionResponse,
+from src.service.transaction_service import TransactionService, TransactionCreate, TransactionEdit
+from src.data.enum import TransactionType
+from src.utils.exceptions import ValidationError, NotFoundError
+from src.app.api.schemas.transaction import (
+    TransactionCreate as TransactionCreateSchema,
+    TransactionEdit as TransactionEditSchema,
+    TransactionOut,
     TransactionListResponse,
-    ImportSummaryResponse,
 )
-from app.services import LedgerService, TransactionCreate, TransactionUpdate, PortfolioEngine
-from app.csv import CsvImporter, CsvExporter, CsvTemplateGenerator
-from app.domain.models import TransactionType
-from app.core.exceptions import ValidationError, NotFoundError
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
-@router.post("/", response_model=TransactionResponse, status_code=status.HTTP_201_CREATED)
-def add_transaction(
-    data: TransactionCreateRequest,
-    ledger: LedgerService = Depends(get_ledger_service),
-    portfolio: PortfolioEngine = Depends(get_portfolio_engine),
-) -> TransactionResponse:
-    """Add a new transaction to the ledger."""
-    try:
-        txn_create = TransactionCreate(
-            account_id=data.account_id,
-            txn_type=data.txn_type,
-            txn_time_est=data.txn_time_est,
-            symbol=data.symbol,
-            quantity=data.quantity,
-            price=data.price,
-            cash_amount=data.cash_amount,
-            fees=data.fees,
-            note=data.note,
-        )
-        transaction = ledger.add_transaction(txn_create)
-
-        # Rebuild portfolio cache
-        portfolio.rebuild_account(data.account_id)
-
-        return _to_response(transaction)
-    except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
-    except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+def _get_transaction_service() -> TransactionService:
+    return TransactionService()
 
 
-@router.get("/", response_model=TransactionListResponse)
-def query_transactions(
-    account_ids: Optional[str] = Query(None, description="Comma-separated account IDs"),
-    symbols: Optional[str] = Query(None, description="Comma-separated symbols"),
-    txn_types: Optional[str] = Query(None, description="Comma-separated types"),
-    start_date: Optional[datetime] = Query(None, description="Start date filter"),
-    end_date: Optional[datetime] = Query(None, description="End date filter"),
-    include_deleted: bool = Query(False, description="Include deleted transactions"),
-    ledger: LedgerService = Depends(get_ledger_service),
-) -> TransactionListResponse:
-    """Query transactions with optional filters."""
-    # Parse comma-separated values
-    account_id_list = account_ids.split(",") if account_ids else None
-    symbol_list = [s.upper() for s in symbols.split(",")] if symbols else None
-    type_list = [TransactionType(t.strip()) for t in txn_types.split(",")] if txn_types else None
+def _row_to_out(row: dict) -> TransactionOut:
+    qty = row.get("quantity")
+    price = row.get("price")
+    cash = row.get("cash_amount")
+    amount = None
+    if qty is not None and price is not None:
+        amount = round(float(qty) * float(price), 2)
+    elif cash is not None:
+        amount = round(float(cash), 2)
 
-    transactions = ledger.query_transactions(
-        account_ids=account_id_list,
-        symbols=symbol_list,
-        txn_types=type_list,
-        start_date=start_date,
-        end_date=end_date,
-        include_deleted=include_deleted,
+    return TransactionOut(
+        txn_id=row["txn_id"],
+        account_name=row["account_name"],
+        txn_type=row["txn_type"],
+        txn_time_est=row["txn_time_est"],
+        symbol=row.get("symbol"),
+        quantity=float(qty) if qty is not None else None,
+        price=float(price) if price is not None else None,
+        cash_amount=float(cash) if cash is not None else None,
+        amount=amount,
+        fees=float(row.get("fees") or 0),
+        note=row.get("note"),
     )
 
+
+@router.get("", response_model=TransactionListResponse)
+def list_transactions(
+    account: Optional[list[str]] = Query(None, alias="account"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+):
+    """
+    List transactions with optional account filter and pagination.
+    account: list of account names to filter (empty = all)
+    """
+    svc = _get_transaction_service()
+    account_names = account if account else None
+    rows = svc.list_transactions(account_names=account_names)
+    total = len(rows)
+    total_pages = max(1, math.ceil(total / page_size))
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_rows = rows[start:end]
+    items = [_row_to_out(r) for r in page_rows]
     return TransactionListResponse(
-        transactions=[_to_response(t) for t in transactions],
-        count=len(transactions),
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
 
 
-@router.patch("/{transaction_id}", response_model=TransactionResponse)
-def edit_transaction(
-    transaction_id: str,
-    data: TransactionUpdateRequest,
-    ledger: LedgerService = Depends(get_ledger_service),
-    portfolio: PortfolioEngine = Depends(get_portfolio_engine),
-) -> TransactionResponse:
-    """Edit an existing transaction."""
+@router.post("", response_model=TransactionOut, status_code=201)
+def create_transaction(data: TransactionCreateSchema):
+    """Create a new transaction."""
+    svc = _get_transaction_service()
     try:
-        patch = TransactionUpdate(
-            txn_time_est=data.txn_time_est,
-            symbol=data.symbol,
-            quantity=data.quantity,
-            price=data.price,
-            cash_amount=data.cash_amount,
-            fees=data.fees,
-            note=data.note,
-        )
-        transaction = ledger.edit_transaction(transaction_id, patch)
+        txn_type = TransactionType(data.txn_type)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid txn_type: {data.txn_type}")
 
-        # Rebuild portfolio cache
-        portfolio.rebuild_account(transaction.account_id)
+    txn_time = data.txn_time_est
+    if isinstance(txn_time, str):
+        txn_time = datetime.fromisoformat(txn_time.replace("Z", "+00:00"))
 
-        return _to_response(transaction)
+    txn_id = uuid.uuid4().hex
+    create = TransactionCreate(
+        txn_id=txn_id,
+        account_name=data.account_name,
+        txn_type=txn_type,
+        txn_time_est=txn_time,
+        symbol=data.symbol,
+        quantity=Decimal(str(data.quantity)) if data.quantity is not None else None,
+        price=Decimal(str(data.price)) if data.price is not None else None,
+        cash_amount=Decimal(str(data.cash_amount)) if data.cash_amount is not None else None,
+        fees=Decimal(str(data.fees)),
+        note=data.note,
+    )
+    try:
+        svc.create_transaction(create)
+        row = svc.get_transaction(txn_id)
+        return _row_to_out(row)
     except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
+        raise HTTPException(status_code=400, detail=e.message)
     except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+        raise HTTPException(status_code=404, detail=e.message)
 
 
-@router.delete("/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_transaction(
-    transaction_id: str,
-    ledger: LedgerService = Depends(get_ledger_service),
-    portfolio: PortfolioEngine = Depends(get_portfolio_engine),
-) -> None:
-    """Soft delete a transaction."""
+@router.put("/{txn_id}", response_model=TransactionOut)
+def update_transaction(txn_id: str, data: TransactionEditSchema):
+    """Update an existing transaction."""
+    svc = _get_transaction_service()
+    txn_time = data.txn_time_est
+    if txn_time is not None and isinstance(txn_time, str):
+        txn_time = datetime.fromisoformat(txn_time.replace("Z", "+00:00"))
+
     try:
-        # Get transaction first to know the account_id
-        transactions = ledger.query_transactions(include_deleted=True)
-        txn = next((t for t in transactions if t.txn_id == transaction_id), None)
-        if not txn:
-            raise NotFoundError("Transaction", transaction_id)
+        txn_type_val = TransactionType(data.txn_type) if data.txn_type else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid txn_type: {data.txn_type}")
 
-        ledger.soft_delete_transaction(transaction_id)
-
-        # Rebuild portfolio cache
-        portfolio.rebuild_account(txn.account_id)
+    edit = TransactionEdit(
+        txn_id=txn_id,
+        account_name=data.account_name,
+        txn_type=txn_type_val,
+        txn_time_est=txn_time,
+        symbol=data.symbol,
+        quantity=Decimal(str(data.quantity)) if data.quantity is not None else None,
+        price=Decimal(str(data.price)) if data.price is not None else None,
+        cash_amount=Decimal(str(data.cash_amount)) if data.cash_amount is not None else None,
+        fees=Decimal(str(data.fees)) if data.fees is not None else None,
+        note=data.note,
+    )
+    try:
+        row = svc.edit_transaction(edit)
+        return _row_to_out(row)
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=e.message)
     except NotFoundError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=e.message)
+        raise HTTPException(status_code=404, detail=e.message)
 
 
-@router.post("/undo/{account_id}", status_code=status.HTTP_200_OK)
-def undo_last_action(
-    account_id: str,
-    ledger: LedgerService = Depends(get_ledger_service),
-    portfolio: PortfolioEngine = Depends(get_portfolio_engine),
-) -> dict[str, str]:
-    """Undo the last action on an account."""
+@router.delete("/{txn_id}", status_code=204)
+def delete_transaction(txn_id: str):
+    """Delete a transaction."""
+    svc = _get_transaction_service()
     try:
-        ledger.undo_last_action(account_id)
-        portfolio.rebuild_account(account_id)
-        return {"status": "success", "message": "Last action undone"}
-    except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
-    except NotImplementedError as e:
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Undo functionality not yet implemented",
-        )
-
-
-@router.post("/import", response_model=ImportSummaryResponse)
-async def import_csv(
-    file: UploadFile = File(...),
-    importer: CsvImporter = Depends(get_csv_importer),
-) -> ImportSummaryResponse:
-    """Import transactions from a CSV file."""
-    # Save uploaded file to temp location
-    with tempfile.NamedTemporaryFile(mode="wb", delete=False, suffix=".csv") as tmp:
-        content = await file.read()
-        tmp.write(content)
-        tmp_path = tmp.name
-
-    try:
-        summary = importer.import_csv(tmp_path)
-        return ImportSummaryResponse(
-            imported_count=summary.imported_count,
-            skipped_count=summary.skipped_count,
-            error_count=summary.error_count,
-            errors=summary.errors,
-            import_batch_id=summary.import_batch_id,
-        )
-    except ValidationError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=e.message)
-    finally:
-        os.unlink(tmp_path)
-
-
-@router.get("/export")
-def export_csv(
-    account_ids: Optional[str] = Query(None, description="Comma-separated account IDs"),
-    exporter: CsvExporter = Depends(get_csv_exporter),
-) -> FileResponse:
-    """Export transactions to a CSV file."""
-    account_id_list = account_ids.split(",") if account_ids else None
-
-    # Create temp file
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv") as tmp:
-        tmp_path = tmp.name
-
-    exporter.export_csv(tmp_path, account_ids=account_id_list)
-
-    return FileResponse(
-        path=tmp_path,
-        filename="transactions_export.csv",
-        media_type="text/csv",
-    )
-
-
-@router.get("/template")
-def get_csv_template(
-    generator: CsvTemplateGenerator = Depends(get_csv_template_generator),
-) -> FileResponse:
-    """Download a blank CSV import template."""
-    with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".csv") as tmp:
-        tmp_path = tmp.name
-
-    generator.generate_template(tmp_path)
-
-    return FileResponse(
-        path=tmp_path,
-        filename="import_template.csv",
-        media_type="text/csv",
-    )
-
-
-def _to_response(txn) -> TransactionResponse:
-    """Convert domain transaction to response schema."""
-    return TransactionResponse(
-        txn_id=txn.txn_id,
-        account_id=txn.account_id,
-        txn_time_est=txn.txn_time_est,
-        txn_type=txn.txn_type,
-        symbol=txn.symbol,
-        quantity=txn.quantity,
-        price=txn.price,
-        cash_amount=txn.cash_amount,
-        fees=txn.fees,
-        note=txn.note,
-        is_deleted=txn.is_deleted,
-        created_at_est=txn.created_at_est,
-        updated_at_est=txn.updated_at_est,
-    )
+        svc.delete_transaction(txn_id)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail=e.message)

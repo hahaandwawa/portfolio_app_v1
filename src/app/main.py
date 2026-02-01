@@ -1,62 +1,36 @@
-"""FastAPI application entry point."""
-
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.config.settings import get_settings
-from app.config.logging_config import setup_logging
-from app.repositories.sqlalchemy.database import init_db
-from app.api.routers import accounts_router, transactions_router, analysis_router
-from app.core.exceptions import AppError
+from src.app.db import init_database
+from src.app.api.routers import accounts, transactions
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan handler."""
-    # Startup
-    setup_logging()
-    init_db()
+    init_database()
     yield
-    # Shutdown (nothing to clean up)
 
-
-settings = get_settings()
 
 app = FastAPI(
-    title=settings.app_name,
-    description="Local-first investment tracking and portfolio management",
-    version="0.1.0",
+    title="投资记录 API",
+    description="Investment record management",
     lifespan=lifespan,
 )
 
-# Include routers
-app.include_router(accounts_router)
-app.include_router(transactions_router)
-app.include_router(analysis_router)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-
-@app.exception_handler(AppError)
-async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
-    """Global handler for application errors."""
-    return JSONResponse(
-        status_code=400,
-        content={"error": exc.code, "message": exc.message},
-    )
-
-
-@app.get("/health")
-def health_check() -> dict[str, str]:
-    """Health check endpoint."""
-    return {"status": "healthy"}
+app.include_router(accounts.router)
+app.include_router(transactions.router)
 
 
 @app.get("/")
-def root() -> dict[str, str]:
-    """Root endpoint with API info."""
-    return {
-        "app": settings.app_name,
-        "version": "0.1.0",
-        "docs": "/docs",
-    }
+def root():
+    return {"message": "投资记录 API", "docs": "/docs"}
