@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, Query, HTTPException
 
 from src.service.transaction_service import TransactionService, TransactionCreate, TransactionEdit
-from src.data.enum import TransactionType
+from src.service.enums import TransactionType
 from src.utils.exceptions import ValidationError, NotFoundError
 from src.app.api.schemas.transaction import (
     TransactionCreate as TransactionCreateSchema,

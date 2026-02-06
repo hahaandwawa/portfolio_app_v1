@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, List, Optional
+from typing import List, Optional
 import sqlite3
 import uuid
 
-from src.data.enum import TransactionType
+from src.service.enums import TransactionType
 from src.utils.exceptions import ValidationError, NotFoundError
 from src.service.util import _load_config
 

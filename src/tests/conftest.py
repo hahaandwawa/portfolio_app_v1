@@ -15,7 +15,7 @@ from src.service.transaction_service import (
     TransactionCreate,
     TransactionEdit,
 )
-from src.data.enum import TransactionType
+from src.service.enums import TransactionType
 from src.utils.exceptions import NotFoundError
 
 

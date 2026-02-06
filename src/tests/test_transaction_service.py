@@ -13,7 +13,7 @@ from src.service.transaction_service import (
     TransactionEdit,
 )
 from src.service.account_service import AccountCreate
-from src.data.enum import TransactionType
+from src.service.enums import TransactionType
 from src.utils.exceptions import ValidationError, NotFoundError
 
 from src.tests.conftest import make_transaction_create
