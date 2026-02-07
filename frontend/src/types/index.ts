@@ -17,6 +17,7 @@ export interface Transaction {
   amount: number | null;
   fees: number;
   note: string | null;
+  cash_destination_account?: string | null;
 }
 
 export interface TransactionListResponse {
@@ -37,6 +38,7 @@ export interface TransactionCreatePayload {
   cash_amount?: number;
   fees?: number;
   note?: string;
+  cash_destination_account?: string | null;
 }
 
 export interface TransactionEditPayload {
@@ -49,6 +51,7 @@ export interface TransactionEditPayload {
   cash_amount?: number;
   fees?: number;
   note?: string;
+  cash_destination_account?: string | null;
 }
 
 export interface TransactionImportResult {
@@ -80,4 +83,15 @@ export interface PortfolioSummary {
   cash_balance: number;
   account_cash: AccountCash[];
   positions: PortfolioPosition[];
+}
+
+/** Per-account position for a symbol (GET /portfolio/positions-by-symbol). */
+export interface PositionByAccount {
+  account_name: string;
+  quantity: number;
+}
+
+export interface PositionsBySymbolResponse {
+  symbol: string;
+  positions: PositionByAccount[];
 }

@@ -53,7 +53,8 @@ def _create_transactions_schema(conn: sqlite3.Connection) -> None:
             price REAL,
             cash_amount REAL,
             fees REAL,
-            note TEXT
+            note TEXT,
+            cash_destination_account TEXT
         )
         """
     )
@@ -110,6 +111,33 @@ def transaction_service(account_db_path, transaction_db_path):
     )
 
 
+@pytest.fixture
+def transaction_service_with_validation(transaction_service, account_for_transactions):
+    """TransactionService with symbol and sell validation (mock QuoteService + PortfolioService.get_quantity_held)."""
+    from src.service.portfolio_service import PortfolioService
+
+    class MockQuoteService:
+        """Valid symbols: AAPL, MSFT, GOOG, NVDA, META, AMZN, TSLA. Others invalid."""
+
+        def get_quotes(self, symbols):
+            valid = {"AAPL", "MSFT", "GOOG", "NVDA", "META", "AMZN", "TSLA"}
+            result = {}
+            for sym in symbols:
+                if sym in valid:
+                    result[sym] = {"current_price": 100.0, "display_name": f"{sym} Inc."}
+                else:
+                    result[sym] = {"current_price": None, "display_name": sym}
+            return result
+
+    portfolio_service = PortfolioService(transaction_service=transaction_service)
+    return TransactionService(
+        transaction_db_path=transaction_service._transaction_db_path,
+        account_db_path=transaction_service._account_db_path,
+        quote_service=MockQuoteService(),
+        get_quantity_held=portfolio_service.get_quantity_held,
+    )
+
+
 # ---------- Data builders for tests ----------
 
 @pytest.fixture
@@ -138,6 +166,7 @@ def make_transaction_create(
     fees=None,
     note: str = None,
     txn_id: str = None,
+    cash_destination_account: str = None,
 ):
     """Build TransactionCreate; defaults for BUY; use cash_amount for CASH_*."""
     from datetime import datetime
@@ -167,4 +196,5 @@ def make_transaction_create(
         fees=fees,
         note=note,
         txn_id=txn_id,
+        cash_destination_account=cash_destination_account,
     )

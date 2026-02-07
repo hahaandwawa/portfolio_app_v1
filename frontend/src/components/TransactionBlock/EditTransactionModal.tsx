@@ -38,6 +38,7 @@ export function EditTransactionModal({
   onSuccess,
 }: EditTransactionModalProps) {
   const [accountName, setAccountName] = useState("");
+  const [cashDestinationAccount, setCashDestinationAccount] = useState("");
   const [txnType, setTxnType] = useState<TransactionType>("BUY");
   const [txnTime, setTxnTime] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -61,6 +62,11 @@ export function EditTransactionModal({
       setCashAmount(transaction.cash_amount?.toString() ?? "");
       setFees(transaction.fees?.toString() ?? "0");
       setNote(transaction.note ?? "");
+      setCashDestinationAccount(
+        transaction.txn_type === "SELL" && transaction.cash_destination_account
+          ? transaction.cash_destination_account
+          : transaction.account_name
+      );
     }
   }, [isOpen, transaction]);
 
@@ -86,6 +92,10 @@ export function EditTransactionModal({
       payload.symbol = symbol.trim().toUpperCase();
       payload.quantity = q;
       payload.price = p;
+      if (txnType === "SELL" && cashDestinationAccount) {
+        payload.cash_destination_account =
+          cashDestinationAccount !== accountName ? cashDestinationAccount : undefined;
+      }
     } else if (isCash) {
       const c = parseFloat(cashAmount);
       if (isNaN(c) || c <= 0) return null;
@@ -242,6 +252,24 @@ export function EditTransactionModal({
                   />
                 </div>
               </div>
+              {txnType === "SELL" && (
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+                    卖出资金转入账户
+                  </label>
+                  <select
+                    value={cashDestinationAccount}
+                    onChange={(e) => setCashDestinationAccount(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-[var(--text-primary)]"
+                  >
+                    {accounts.map((a) => (
+                      <option key={a.name} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </>
           )}
 

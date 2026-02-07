@@ -54,7 +54,7 @@ function PnLAmount({ value }: { value: number | null | undefined }) {
   const cls = isProfit ? "text-[var(--success)]" : "text-red-500 dark:text-red-400";
   return (
     <td className={`px-2 py-2 text-right tabular-nums ${cls}`}>
-      {value >= 0 ? "+" : ""}¥{formatMoney(value)}
+      {value >= 0 ? "+" : ""}${formatMoney(value)}
     </td>
   );
 }
@@ -178,16 +178,16 @@ export function PortfolioTable({
                 </div>
               </td>
               <td className="px-2 py-2 text-right text-[var(--text-primary)] tabular-nums">
-                {pos.latest_price != null ? `¥${formatMoney(pos.latest_price)}` : "—"}
+                {pos.latest_price != null ? `$${formatMoney(pos.latest_price)}` : "—"}
               </td>
               <td className="px-2 py-2 text-right text-[var(--text-primary)] tabular-nums">
-                ¥{formatCost(pos)}
+                ${formatCost(pos)}
               </td>
               <td className="px-2 py-2 text-right text-[var(--text-primary)] tabular-nums">
                 {formatQuantity(pos.quantity)}
               </td>
               <td className="px-2 py-2 text-right text-[var(--text-primary)] tabular-nums">
-                {pos.market_value != null ? `¥${formatMoney(pos.market_value)}` : "—"}
+                {pos.market_value != null ? `$${formatMoney(pos.market_value)}` : "—"}
               </td>
               <PnLAmount value={pos.unrealized_pnl} />
               <PnLPct value={pos.unrealized_pnl_pct} />

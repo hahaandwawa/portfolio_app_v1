@@ -137,17 +137,17 @@ export function PortfolioBlock({
                       <div className="text-xs text-[var(--text-secondary)]">{pos.display_name}</div>
                     )}
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[var(--text-secondary)]">
-                      <span>成本价 ¥{costPrice.toFixed(2)}</span>
+                      <span>成本价 ${costPrice.toFixed(2)}</span>
                       <span>数量 {pos.quantity.toLocaleString("zh-CN", { maximumFractionDigits: 4 })}</span>
                       {pos.latest_price != null && (
                         <>
-                          <span>最新价 ¥{pos.latest_price.toFixed(2)}</span>
-                          <span>市值 ¥{(pos.market_value ?? 0).toFixed(2)}</span>
+                          <span>最新价 ${pos.latest_price.toFixed(2)}</span>
+                          <span>市值 ${(pos.market_value ?? 0).toFixed(2)}</span>
                         </>
                       )}
                       {(pos.unrealized_pnl != null || pos.unrealized_pnl_pct != null) && (
                         <span className={`col-span-2 ${pnlCls}`}>
-                          浮动盈亏 {pos.unrealized_pnl != null ? `¥${(pos.unrealized_pnl >= 0 ? "+" : "") + pos.unrealized_pnl.toFixed(2)}` : ""}
+                          浮动盈亏 {pos.unrealized_pnl != null ? `$${(pos.unrealized_pnl >= 0 ? "+" : "") + pos.unrealized_pnl.toFixed(2)}` : ""}
                           {pos.unrealized_pnl_pct != null && ` (${(pos.unrealized_pnl_pct >= 0 ? "+" : "") + pos.unrealized_pnl_pct.toFixed(2)}%)`}
                         </span>
                       )}

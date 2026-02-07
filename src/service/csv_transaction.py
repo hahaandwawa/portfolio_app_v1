@@ -34,6 +34,7 @@ CSV_COLUMNS: List[str] = [
     "cash_amount",
     "fees",
     "note",
+    "cash_destination_account",
 ]
 
 _REQUIRED_COLUMNS = {"account_name", "txn_type", "txn_time_est"}
@@ -65,6 +66,7 @@ _TEMPLATE_EXAMPLES: List[dict] = [
         "cash_amount": "",
         "fees": "4.95",
         "note": "Sell Tesla shares",
+        "cash_destination_account": "",
     },
     {
         "account_name": "Savings",
@@ -222,6 +224,7 @@ def _parse_row(raw_row: dict, header_map: dict, row_num: int) -> TransactionCrea
     if fees is None:
         fees = Decimal("0")
     note = _get_field(raw_row, header_map, "note") or None
+    cash_destination_account = _get_field(raw_row, header_map, "cash_destination_account") or None
 
     # Type-specific validation
     if txn_type in (TransactionType.BUY, TransactionType.SELL):
@@ -249,6 +252,7 @@ def _parse_row(raw_row: dict, header_map: dict, row_num: int) -> TransactionCrea
         cash_amount=cash_amount,
         fees=fees,
         note=note,
+        cash_destination_account=cash_destination_account,
     )
 
 
@@ -276,6 +280,7 @@ def transactions_to_csv(rows: List[dict]) -> str:
             "cash_amount": row.get("cash_amount") if row.get("cash_amount") is not None else "",
             "fees": row.get("fees") if row.get("fees") is not None else "0",
             "note": row.get("note") or "",
+            "cash_destination_account": row.get("cash_destination_account") or "",
         })
     return output.getvalue()
 

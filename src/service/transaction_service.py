@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+from typing import Callable, List, Optional
 import sqlite3
 import uuid
 
@@ -29,6 +29,7 @@ class TransactionCreate:
     fees: Decimal = Decimal("0")
     note: Optional[str] = None
     txn_id: Optional[str] = None  # Auto-generated if omitted
+    cash_destination_account: Optional[str] = None  # For SELL: account that receives sale proceeds
 
 @dataclass
 class TransactionEdit:
@@ -42,10 +43,26 @@ class TransactionEdit:
     cash_amount: Optional[Decimal] = None
     fees: Optional[Decimal] = None
     note: Optional[str] = None
+    cash_destination_account: Optional[str] = None
+
+
+def _is_symbol_valid(quote_data: dict, symbol: str) -> bool:
+    """Consider symbol valid if we have current_price or a display_name that differs from raw symbol."""
+    price = quote_data.get("current_price")
+    if price is not None:
+        return True
+    name = (quote_data.get("display_name") or "").strip()
+    return bool(name and name.upper() != (symbol or "").strip().upper())
 
 
 class TransactionService:
-    def __init__(self, transaction_db_path: Optional[str] = None, account_db_path: Optional[str] = None):
+    def __init__(
+        self,
+        transaction_db_path: Optional[str] = None,
+        account_db_path: Optional[str] = None,
+        quote_service: Optional[object] = None,
+        get_quantity_held: Optional[Callable[[str, str], Decimal]] = None,
+    ):
         if transaction_db_path and account_db_path:
             self._transaction_db_path = transaction_db_path
             self._account_db_path = account_db_path
@@ -53,22 +70,41 @@ class TransactionService:
             config = _load_config()
             self._transaction_db_path = config.get("TransactionDBPath", "transactions.sqlite") or "transactions.sqlite"
             self._account_db_path = config.get("AccountDBPath", "accounts.sqlite") or "accounts.sqlite"
-    
+        self._quote_service = quote_service
+        self._get_quantity_held = get_quantity_held
+
     def _validate_transaction_create(self, data: TransactionCreate) -> None:
         if data.txn_time_est is None:
             raise ValidationError("txn_time_est is required")
         account = self._validate_account(data.account_name)
+        if data.cash_destination_account is not None:
+            self._validate_account(data.cash_destination_account)
         if data.txn_type in (TransactionType.BUY, TransactionType.SELL):
             if not data.symbol:
-                # TODO: Also query symbol to check it is a valid symbol
                 raise ValidationError(f"{data.txn_type.value} requires a valid symbol")
+            norm_symbol = _normalize_symbol(data.symbol)
+            if self._quote_service and norm_symbol:
+                quotes = self._quote_service.get_quotes([norm_symbol])
+                q = quotes.get(norm_symbol) or {}
+                if not _is_symbol_valid(q, data.symbol):
+                    raise ValidationError(f"Invalid or unknown symbol: {norm_symbol}")
             if data.quantity is None or data.quantity <= 0:
                 raise ValidationError(f"{data.txn_type.value} requires quantity > 0")
             if data.price is None or data.price < 0:
                 raise ValidationError(f"{data.txn_type.value} requires price >= 0")
             if data.fees < 0:
                 raise ValidationError("Fees cannot be negative")
-            # TODO: For SELL, validate sufficient shares via PortfolioEngine
+            if data.txn_type == TransactionType.SELL and self._get_quantity_held and norm_symbol:
+                held = self._get_quantity_held(data.account_name, norm_symbol)
+                if held <= 0:
+                    raise ValidationError(
+                        f"You do not hold {norm_symbol} in account {data.account_name}"
+                    )
+                if held < data.quantity:
+                    raise ValidationError(
+                        f"Insufficient shares of {norm_symbol} in account {data.account_name}. "
+                        f"You have {held}, tried to sell {data.quantity}"
+                    )
         elif data.txn_type in (TransactionType.CASH_DEPOSIT, TransactionType.CASH_WITHDRAW):
             if data.cash_amount is None or data.cash_amount <= 0:
                 raise ValidationError(f"{data.txn_type.value} requires cash_amount > 0")
@@ -96,6 +132,9 @@ class TransactionService:
         symbol = _normalize_symbol(transaction.symbol)
         conn = sqlite3.connect(self._transaction_db_path)
         cur = conn.cursor()
+        cash_dest = transaction.cash_destination_account
+        if transaction.txn_type == TransactionType.SELL and cash_dest is None:
+            cash_dest = transaction.account_name
         cur.execute(
             """
             INSERT INTO transactions (
@@ -108,8 +147,9 @@ class TransactionService:
                 price,
                 cash_amount,
                 fees,
-                note
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                note,
+                cash_destination_account
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 txn_id,
@@ -122,6 +162,7 @@ class TransactionService:
                 float(transaction.cash_amount) if transaction.cash_amount is not None else None,
                 float(transaction.fees or Decimal("0")),
                 transaction.note,
+                cash_dest,
             ),
         )
         conn.commit()
@@ -180,6 +221,7 @@ class TransactionService:
             cash_amount=Decimal(str(row["cash_amount"])) if row.get("cash_amount") is not None else None,
             fees=Decimal(str(row.get("fees") or 0)),
             note=row.get("note"),
+            cash_destination_account=row.get("cash_destination_account"),
         )
 
     def edit_transaction(self, data: TransactionEdit) -> dict:
@@ -206,6 +248,8 @@ class TransactionService:
             txn_create.fees = data.fees
         if data.note is not None:
             txn_create.note = data.note
+        if data.cash_destination_account is not None:
+            txn_create.cash_destination_account = data.cash_destination_account
 
         # 3. Delete old, then create (reuses validation + save)
         conn = sqlite3.connect(self._transaction_db_path)

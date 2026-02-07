@@ -10,6 +10,7 @@ from src.app.api.schemas.portfolio import (
     PortfolioSummary,
     PortfolioPosition,
     AccountCash,
+    PositionsBySymbolResponse,
 )
 
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
@@ -49,4 +50,22 @@ def get_portfolio(
         cash_balance=raw["cash_balance"],
         account_cash=[AccountCash(**a) for a in raw["account_cash"]],
         positions=[PortfolioPosition(**p) for p in raw["positions"]],
+    )
+
+
+@router.get("/positions-by-symbol", response_model=PositionsBySymbolResponse)
+def get_positions_by_symbol(
+    symbol: str = Query(..., description="Stock symbol (e.g. AAPL)"),
+):
+    """
+    Return per-account quantities for the given symbol (only accounts with quantity > 0),
+    sorted by quantity descending. Used to default source/cash-destination for SELL.
+    """
+    if not (symbol or "").strip():
+        return PositionsBySymbolResponse(symbol=(symbol or "").strip().upper(), positions=[])
+    svc = _get_portfolio_service()
+    raw = svc.get_positions_by_symbol(symbol.strip().upper())
+    return PositionsBySymbolResponse(
+        symbol=symbol.strip().upper(),
+        positions=[{"account_name": p["account_name"], "quantity": p["quantity"]} for p in raw],
     )

@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Modal } from "../Modal";
 import type { Account, TransactionCreatePayload, TransactionType } from "../../types";
+import { api } from "../../api/client";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -30,9 +31,13 @@ export function AddTransactionModal({
   onSuccess,
 }: AddTransactionModalProps) {
   const [accountName, setAccountName] = useState("");
+  const [cashDestinationAccount, setCashDestinationAccount] = useState("");
   useEffect(() => {
     if (isOpen && accounts.length > 0) {
       setAccountName((prev) =>
+        accounts.some((a) => a.name === prev) ? prev : accounts[0].name
+      );
+      setCashDestinationAccount((prev) =>
         accounts.some((a) => a.name === prev) ? prev : accounts[0].name
       );
     }
@@ -50,6 +55,36 @@ export function AddTransactionModal({
 
   const isStock = txnType === "BUY" || txnType === "SELL";
   const isCash = txnType === "CASH_DEPOSIT" || txnType === "CASH_WITHDRAW";
+
+  // For SELL: default cash destination to source account when source changes
+  useEffect(() => {
+    if (txnType === "SELL" && accountName) setCashDestinationAccount(accountName);
+  }, [txnType, accountName]);
+
+  // For SELL: when symbol is entered, default source account to account with most shares
+  const fetchPositionsForSymbol = useCallback(async (sym: string) => {
+    const s = sym?.trim().toUpperCase();
+    if (!s || accounts.length === 0) return;
+    try {
+      const res = await api.getPositionsBySymbol(s);
+      if (res.positions.length > 0 && res.positions[0].account_name) {
+        const top = res.positions[0].account_name;
+        if (accounts.some((a) => a.name === top)) {
+          setAccountName(top);
+          setCashDestinationAccount(top);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [accounts]);
+
+  useEffect(() => {
+    if (txnType === "SELL" && symbol.trim()) {
+      const t = setTimeout(() => fetchPositionsForSymbol(symbol), 300);
+      return () => clearTimeout(t);
+    }
+  }, [txnType, symbol, fetchPositionsForSymbol]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +121,9 @@ export function AddTransactionModal({
       payload.symbol = symbol.trim().toUpperCase();
       payload.quantity = q;
       payload.price = p;
+      if (txnType === "SELL" && cashDestinationAccount && cashDestinationAccount !== accountName) {
+        payload.cash_destination_account = cashDestinationAccount;
+      }
     }
 
     if (isCash) {
@@ -110,6 +148,7 @@ export function AddTransactionModal({
       setTimeout(() => onSuccess?.(), 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交失败");
+      return;
     } finally {
       setSubmitting(false);
     }
@@ -216,6 +255,24 @@ export function AddTransactionModal({
                 />
               </div>
             </div>
+            {txnType === "SELL" && (
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[var(--text-primary)]">
+                  卖出资金转入账户
+                </label>
+                <select
+                  value={cashDestinationAccount}
+                  onChange={(e) => setCashDestinationAccount(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--border-color)] bg-[var(--bg-primary)] px-3 py-2 text-[var(--text-primary)]"
+                >
+                  {accounts.map((a) => (
+                    <option key={a.name} value={a.name}>
+                      {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </>
         )}
 

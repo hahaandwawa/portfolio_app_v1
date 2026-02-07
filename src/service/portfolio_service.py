@@ -121,7 +121,8 @@ class PortfolioService:
                     amount = Decimal("0")
                 credit = amount - fees
                 cash += credit
-                by_account[acc_name] += credit
+                cash_dest = row.get("cash_destination_account") or acc_name
+                by_account[cash_dest] += credit
                 sym = _normalize_symbol(row.get("symbol"))
                 if sym:
                     by_symbol[sym]["quantity"] -= Decimal(str(qty or 0))
@@ -161,6 +162,43 @@ class PortfolioService:
             "account_cash": account_cash,
             "positions": positions,
         }
+
+    def get_quantity_held(self, account_name: str, symbol: str) -> Decimal:
+        """
+        Return the quantity of symbol held in the given account (from transactions).
+        Returns Decimal(0) if the account has no position in that symbol.
+        """
+        summary = self.get_summary(account_names=[account_name], include_quotes=False)
+        norm = _normalize_symbol(symbol)
+        if not norm:
+            return Decimal("0")
+        for pos in summary["positions"]:
+            if pos["symbol"] == norm:
+                return Decimal(str(pos["quantity"]))
+        return Decimal("0")
+
+    def get_positions_by_symbol(self, symbol: str) -> list[dict]:
+        """
+        Return per-account quantities for the given symbol (only accounts with quantity > 0),
+        sorted by quantity descending. Each item: {"account_name": str, "quantity": float}.
+        """
+        norm = _normalize_symbol(symbol)
+        if not norm:
+            return []
+        rows = self._txn_svc.list_transactions(account_names=None)
+        accounts = set(r.get("account_name") or "" for r in rows)
+        result = []
+        for acc in accounts:
+            if not acc:
+                continue
+            qty = self.get_quantity_held(acc, norm)
+            if qty > 0:
+                result.append({
+                    "account_name": acc,
+                    "quantity": _round_quantity(float(qty)),
+                })
+        result.sort(key=lambda x: -x["quantity"])
+        return result
 
     def _enrich_positions_with_quotes(self, positions: list[dict]) -> list[dict]:
         """Attach quote and computed fields to each position. Mutates and returns positions."""

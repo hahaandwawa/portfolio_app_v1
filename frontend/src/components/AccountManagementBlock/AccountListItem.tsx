@@ -50,7 +50,7 @@ export function AccountListItem({
 }: AccountListItemProps) {
   const canDelete = account.transaction_count === 0;
   const cashText =
-    cashBalance === undefined ? "—" : `现金 ¥${formatCash(cashBalance)}`;
+    cashBalance === undefined ? "—" : `现金 $${formatCash(cashBalance)}`;
 
   return (
     <li className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3.5 transition hover:border-[var(--border-color)]">

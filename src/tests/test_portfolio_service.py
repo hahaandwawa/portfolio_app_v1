@@ -355,6 +355,213 @@ class TestPortfolioRounding:
         assert summary["cash_balance"] == 123.46
 
 
+class TestPortfolioGetQuantityHeld:
+    """get_quantity_held(account_name, symbol) returns quantity in that account."""
+
+    def test_no_position_returns_zero(self, portfolio_service, account_for_transactions):
+        assert portfolio_service.get_quantity_held(account_for_transactions, "AAPL") == 0
+        assert portfolio_service.get_quantity_held(account_for_transactions, "UNKNOWN") == 0
+
+    def test_returns_quantity_after_buy(
+        self, portfolio_service, account_for_transactions
+    ):
+        portfolio_service._txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="AAPL",
+                quantity=Decimal("15"),
+                price=Decimal("100"),
+                fees=Decimal("0"),
+                txn_id="qh1",
+            )
+        )
+        assert portfolio_service.get_quantity_held(account_for_transactions, "AAPL") == 15
+
+    def test_returns_remaining_after_sell(
+        self, portfolio_service, account_for_transactions
+    ):
+        portfolio_service._txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="MSFT",
+                quantity=Decimal("20"),
+                price=Decimal("200"),
+                txn_id="qh2b",
+            )
+        )
+        portfolio_service._txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.SELL,
+                symbol="MSFT",
+                quantity=Decimal("7"),
+                price=Decimal("210"),
+                txn_id="qh2s",
+            )
+        )
+        assert portfolio_service.get_quantity_held(account_for_transactions, "MSFT") == 13
+
+
+class TestPortfolioGetPositionsBySymbol:
+    """get_positions_by_symbol(symbol) returns accounts with quantity > 0, sorted by quantity desc."""
+
+    def test_empty_when_no_holdings(self, portfolio_service, account_for_transactions):
+        assert portfolio_service.get_positions_by_symbol("AAPL") == []
+
+    def test_single_account(
+        self, portfolio_service, account_for_transactions
+    ):
+        portfolio_service._txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="GOOG",
+                quantity=Decimal("10"),
+                price=Decimal("140"),
+                txn_id="pb1",
+            )
+        )
+        positions = portfolio_service.get_positions_by_symbol("GOOG")
+        assert len(positions) == 1
+        assert positions[0]["account_name"] == account_for_transactions
+        assert positions[0]["quantity"] == 10.0
+
+    def test_multiple_accounts_sorted_by_quantity_desc(
+        self, portfolio_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="BrokerA"))
+        account_service.save_account(AccountCreate(name="BrokerB"))
+        txn_svc = portfolio_service._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="XYZ",
+                quantity=Decimal("5"),
+                price=Decimal("10"),
+                txn_id="pb2a",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name="BrokerA",
+                txn_type=TransactionType.BUY,
+                symbol="XYZ",
+                quantity=Decimal("50"),
+                price=Decimal("10"),
+                txn_id="pb2b",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name="BrokerB",
+                txn_type=TransactionType.BUY,
+                symbol="XYZ",
+                quantity=Decimal("25"),
+                price=Decimal("10"),
+                txn_id="pb2c",
+            )
+        )
+        positions = portfolio_service.get_positions_by_symbol("XYZ")
+        assert len(positions) == 3
+        assert positions[0]["account_name"] == "BrokerA" and positions[0]["quantity"] == 50.0
+        assert positions[1]["account_name"] == "BrokerB" and positions[1]["quantity"] == 25.0
+        assert positions[2]["account_name"] == account_for_transactions and positions[2]["quantity"] == 5.0
+
+
+class TestPortfolioSellCashDestination:
+    """SELL proceeds credited to cash_destination_account when set, else source account."""
+
+    def test_sell_without_cash_dest_credits_source(
+        self, portfolio_service, account_for_transactions
+    ):
+        txn_svc = portfolio_service._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.CASH_DEPOSIT,
+                cash_amount=Decimal("5000"),
+                txn_id="cd1",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="AAPL",
+                quantity=Decimal("10"),
+                price=Decimal("100"),
+                txn_id="cd2",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.SELL,
+                symbol="AAPL",
+                quantity=Decimal("5"),
+                price=Decimal("110"),
+                txn_id="cd3",
+                cash_destination_account=None,
+            )
+        )
+        summary = portfolio_service.get_summary(account_names=None)
+        # Cash: 5000 - 1000 (buy) + (5*110) (sell) = 5000 - 1000 + 550 = 4550
+        assert summary["cash_balance"] == 4550.0
+        ac = {a["account_name"]: a["cash_balance"] for a in summary["account_cash"]}
+        assert ac[account_for_transactions] == 4550.0
+
+    def test_sell_with_cash_dest_credits_dest_account(
+        self, portfolio_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="Savings"))
+        txn_svc = portfolio_service._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.CASH_DEPOSIT,
+                cash_amount=Decimal("3000"),
+                txn_id="cd4a",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name="Savings",
+                txn_type=TransactionType.CASH_DEPOSIT,
+                cash_amount=Decimal("1000"),
+                txn_id="cd4b",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="TSLA",
+                quantity=Decimal("4"),
+                price=Decimal("250"),
+                txn_id="cd4c",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.SELL,
+                symbol="TSLA",
+                quantity=Decimal("2"),
+                price=Decimal("260"),
+                txn_id="cd4d",
+                cash_destination_account="Savings",
+            )
+        )
+        summary = portfolio_service.get_summary(account_names=None)
+        # TestBroker: 3000 - 1000 (buy) = 2000; Savings: 1000 + (2*260) = 1520
+        ac = {a["account_name"]: a["cash_balance"] for a in summary["account_cash"]}
+        assert ac[account_for_transactions] == 2000.0
+        assert ac["Savings"] == 1520.0
+
+
 class TestPortfolioQuotesDisabled:
     """When include_quotes=False or no quote_service, positions have cost_price but no quote fields."""
 
@@ -548,3 +755,14 @@ class TestPortfolioAPI:
             assert "total_cost" in pos
             # Optional fields may be present when quotes enabled
             assert "cost_price" in pos or "display_name" in pos or True  # structure allows optional
+
+    def test_get_positions_by_symbol_returns_structure(self, client):
+        """GET /portfolio/positions-by-symbol returns symbol and positions list."""
+        r = client.get("/portfolio/positions-by-symbol", params={"symbol": "AAPL"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["symbol"] == "AAPL"
+        assert isinstance(data["positions"], list)
+        for p in data["positions"]:
+            assert "account_name" in p
+            assert "quantity" in p

@@ -132,4 +132,11 @@ export const api = {
     const qs = search.toString();
     return fetchApi<import("../types").PortfolioSummary>(`/portfolio${qs ? `?${qs}` : ""}`);
   },
+
+  /** GET per-account quantities for a symbol (for SELL default account / cash destination). */
+  getPositionsBySymbol(symbol: string): Promise<import("../types").PositionsBySymbolResponse> {
+    if (!symbol?.trim()) return Promise.resolve({ symbol: symbol?.trim().toUpperCase() ?? "", positions: [] });
+    const q = new URLSearchParams({ symbol: symbol.trim().toUpperCase() });
+    return fetchApi<import("../types").PositionsBySymbolResponse>(`/portfolio/positions-by-symbol?${q}`);
+  },
 };

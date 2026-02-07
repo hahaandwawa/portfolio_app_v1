@@ -719,3 +719,278 @@ class TestDeleteTransaction:
         transaction_service.create_transaction(txn)
         out = transaction_service.get_transaction("reuse-id")
         assert out["txn_id"] == "reuse-id"
+
+
+# -----------------------------------------------------------------------------
+# Symbol validation (Feature 1): invalid symbol rejected on create/edit
+# -----------------------------------------------------------------------------
+
+class TestTransactionSymbolValidation:
+    """BUY/SELL must use a symbol valid per Yahoo (QuoteService). Invalid -> ValidationError."""
+
+    def test_buy_invalid_symbol_raises(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        """When QuoteService returns no price and display_name equals symbol, symbol is invalid."""
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="INVALIDXYZ",
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            txn_id="buy-invalid",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            transaction_service_with_validation.create_transaction(txn)
+        assert "invalid" in exc_info.value.message.lower() or "unknown" in exc_info.value.message.lower()
+        assert "INVALIDXYZ" in exc_info.value.message
+
+    def test_buy_valid_symbol_succeeds(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        """When QuoteService returns current_price, symbol is valid."""
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="AAPL",
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            txn_id="buy-valid",
+        )
+        transaction_service_with_validation.create_transaction(txn)
+        out = transaction_service_with_validation.get_transaction("buy-valid")
+        assert out["symbol"] == "AAPL"
+
+    def test_sell_invalid_symbol_raises(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="BADTICKER",
+            quantity=Decimal("5"),
+            price=Decimal("50"),
+            txn_id="sell-invalid",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            transaction_service_with_validation.create_transaction(txn)
+        assert "invalid" in exc_info.value.message.lower() or "unknown" in exc_info.value.message.lower()
+
+
+# -----------------------------------------------------------------------------
+# Sell validation (Feature 2): sufficient holdings in source account
+# -----------------------------------------------------------------------------
+
+class TestTransactionSellValidation:
+    """SELL rejected when account has no position or insufficient quantity."""
+
+    def test_sell_no_position_in_account_raises(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        """Account has no holdings of symbol -> ValidationError."""
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="AAPL",
+            quantity=Decimal("5"),
+            price=Decimal("100"),
+            txn_id="sell-nopos",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            transaction_service_with_validation.create_transaction(txn)
+        msg = exc_info.value.message.lower()
+        assert ("do not hold" in msg or "insufficient" in msg or "hold" in msg)
+        assert "AAPL" in exc_info.value.message
+        assert account_for_transactions in exc_info.value.message
+
+    def test_sell_insufficient_quantity_raises(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        """Account holds 3 shares; selling 5 -> ValidationError with held vs quantity."""
+        # Create 3 shares first
+        transaction_service_with_validation.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="MSFT",
+                quantity=Decimal("3"),
+                price=Decimal("200"),
+                txn_id="buy-msft",
+            )
+        )
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="MSFT",
+            quantity=Decimal("5"),
+            price=Decimal("210"),
+            txn_id="sell-toomuch",
+        )
+        with pytest.raises(ValidationError) as exc_info:
+            transaction_service_with_validation.create_transaction(txn)
+        msg = exc_info.value.message.lower()
+        assert "insufficient" in msg or "hold" in msg
+        assert "3" in exc_info.value.message or "5" in exc_info.value.message
+
+    def test_sell_exact_quantity_succeeds(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        transaction_service_with_validation.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="GOOG",
+                quantity=Decimal("10"),
+                price=Decimal("140"),
+                txn_id="buy-goog",
+            )
+        )
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="GOOG",
+            quantity=Decimal("10"),
+            price=Decimal("150"),
+            txn_id="sell-exact",
+        )
+        transaction_service_with_validation.create_transaction(txn)
+        out = transaction_service_with_validation.get_transaction("sell-exact")
+        assert out["txn_type"] == "SELL" and out["symbol"] == "GOOG"
+
+    def test_sell_partial_quantity_succeeds(
+        self, transaction_service_with_validation, account_for_transactions
+    ):
+        transaction_service_with_validation.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="NVDA",
+                quantity=Decimal("20"),
+                price=Decimal("500"),
+                txn_id="buy-nvda",
+            )
+        )
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="NVDA",
+            quantity=Decimal("7"),
+            price=Decimal("600"),
+            txn_id="sell-partial",
+        )
+        transaction_service_with_validation.create_transaction(txn)
+        out = transaction_service_with_validation.get_transaction("sell-partial")
+        assert out["quantity"] == 7.0
+
+
+# -----------------------------------------------------------------------------
+# Cash destination (Feature 3): optional cash_destination_account for SELL
+# -----------------------------------------------------------------------------
+
+class TestTransactionCashDestination:
+    """SELL can specify cash_destination_account; must be existing account; default = source."""
+
+    def test_sell_without_cash_destination_stored_as_source(
+        self, transaction_service, account_for_transactions
+    ):
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="AAPL",
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            txn_id="b-cd",
+        )
+        transaction_service.create_transaction(txn)
+        txn_sell = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="AAPL",
+            quantity=Decimal("5"),
+            price=Decimal("110"),
+            txn_id="s-cd",
+            cash_destination_account=None,
+        )
+        transaction_service.create_transaction(txn_sell)
+        row = transaction_service.get_transaction("s-cd")
+        assert row.get("cash_destination_account") == account_for_transactions
+
+    def test_sell_with_cash_destination_stored(
+        self, transaction_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="Savings"))
+        txn_buy = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="TSLA",
+            quantity=Decimal("5"),
+            price=Decimal("250"),
+            txn_id="b-cd2",
+        )
+        transaction_service.create_transaction(txn_buy)
+        txn_sell = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="TSLA",
+            quantity=Decimal("2"),
+            price=Decimal("260"),
+            txn_id="s-cd2",
+            cash_destination_account="Savings",
+        )
+        transaction_service.create_transaction(txn_sell)
+        row = transaction_service.get_transaction("s-cd2")
+        assert row.get("cash_destination_account") == "Savings"
+
+    def test_sell_cash_destination_nonexistent_account_raises(
+        self, transaction_service, account_for_transactions
+    ):
+        txn_buy = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="META",
+            quantity=Decimal("5"),
+            price=Decimal("300"),
+            txn_id="b-cd3",
+        )
+        transaction_service.create_transaction(txn_buy)
+        txn_sell = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="META",
+            quantity=Decimal("1"),
+            price=Decimal("310"),
+            txn_id="s-cd3",
+            cash_destination_account="NonExistentAccount",
+        )
+        with pytest.raises(NotFoundError) as exc_info:
+            transaction_service.create_transaction(txn_sell)
+        assert "Account" in exc_info.value.message or "not found" in exc_info.value.message
+        assert "NonExistentAccount" in exc_info.value.message
+
+    def test_edit_sell_cash_destination(
+        self, transaction_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="Other"))
+        txn_buy = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="AMZN",
+            quantity=Decimal("4"),
+            price=Decimal("180"),
+            txn_id="b-edit-cd",
+        )
+        transaction_service.create_transaction(txn_buy)
+        txn_sell = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.SELL,
+            symbol="AMZN",
+            quantity=Decimal("2"),
+            price=Decimal("190"),
+            txn_id="s-edit-cd",
+            cash_destination_account=account_for_transactions,
+        )
+        transaction_service.create_transaction(txn_sell)
+        edited = transaction_service.edit_transaction(
+            TransactionEdit(txn_id="s-edit-cd", cash_destination_account="Other")
+        )
+        assert edited["cash_destination_account"] == "Other"

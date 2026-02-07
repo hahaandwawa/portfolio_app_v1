@@ -26,7 +26,7 @@ This document specifies the frontend implementation for the Portfolio Summary fe
 
 - **Component:** `AccountListItem` (or equivalent account row in 账户管理).
 - **Current row content:** Account icon, account name, badge “{n} 笔交易”, edit/delete buttons.
-- **Addition:** A second badge (or inline text) showing **cash balance** for that account, e.g. “现金 ¥12,345.67” or “¥12,345.67” with a small “现金” label. Style consistently with the existing “{n} 笔交易” badge (e.g. same padding, rounded corners, different color or neutral so the two badges are distinguishable).
+- **Addition:** A second badge (or inline text) showing **cash balance** for that account, e.g. “现金 $12,345.67” or “$12,345.67” with a small “现金” label. Style consistently with the existing “{n} 笔交易” badge (e.g. same padding, rounded corners, different color or neutral so the two badges are distinguishable).
 
 ### 2.2 Data flow
 
@@ -38,8 +38,8 @@ This document specifies the frontend implementation for the Portfolio Summary fe
 ### 2.3 Badge behavior
 
 - **Loading:** If portfolio data is loading, show “—” or a subtle loading state for the cash badge.
-- **Format:** Format cash as currency (e.g. 2 decimals, locale-aware). Example: `12,345.67` or `¥12,345.67` depending on product preference.
-- **Zero:** Show “0.00” or “¥0.00”; do not hide the badge.
+- **Format:** Format cash as currency (e.g. 2 decimals, locale-aware). Example: `12,345.67` or `$12,345.67` depending on product preference.
+- **Zero:** Show “0.00” or “$0.00”; do not hide the badge.
 
 ---
 
@@ -171,7 +171,7 @@ export interface PortfolioSummary {
 |------|--------|
 | **New** `frontend/src/components/PortfolioBlock/PortfolioBlock.tsx` | Section “持仓明细”, fetches portfolio (or receives from App), renders holdings table only (no cash). Sortable columns; full-width table with no horizontal scroll. Empty/loading/error states. |
 | **New** (optional) `frontend/src/components/PortfolioBlock/PortfolioTable.tsx` | Table presentational component: receives sorted positions, column definitions, onSort. Ensures single-row layout (flexible widths, compact padding). |
-| `frontend/src/components/AccountManagementBlock/AccountListItem.tsx` | Add a **cash badge**: accept `cashBalance: number \| undefined`, display next to “{n} 笔交易” (e.g. “现金 ¥12,345.67” or “¥12,345.67”). |
+| `frontend/src/components/AccountManagementBlock/AccountListItem.tsx` | Add a **cash badge**: accept `cashBalance: number \| undefined`, display next to “{n} 笔交易” (e.g. “现金 $12,345.67” or “$12,345.67”). |
 | `frontend/src/components/AccountManagementBlock/AccountManagementBlock.tsx` | Accept optional `accountCashMap: Record<string, number>`. Pass `cashBalance={accountCashMap?.[account.name]}` to each `AccountListItem`. |
 | `frontend/src/App.tsx` | Fetch portfolio when `selectedAccountNames` / `refreshKey` (and optionally on mount for all accounts). Store `portfolio`, `portfolioLoading`, `portfolioError`. Render `PortfolioBlock` above `TransactionBlock` with positions + loading/error. Pass `accountCashMap` (from `portfolio.account_cash`) to `AccountManagementBlock`. |
 | `frontend/src/api/client.ts` | Add `getPortfolio(params?)` returning `PortfolioSummary`. |
@@ -185,7 +185,7 @@ export interface PortfolioSummary {
 - Subtitle (when positions exist): **{n} 只股票**
 - Table headers: **代码/名称**, **成本价**, **持仓数量** (and later: 最新价, 市值, 浮动盈亏, 盈亏比例, 占比)
 - Empty state: **所选账户暂无持仓.**
-- Account cash badge: **现金 ¥{amount}** or **¥{amount}** (consistent with existing currency formatting)
+- Account cash badge: **现金 ${amount}** or **${amount}** (consistent with existing currency formatting)
 - Error: **加载失败** + backend hint (same as transaction block)
 
 ---

@@ -14,6 +14,7 @@ class TransactionCreate(BaseModel):
     cash_amount: Optional[float] = None
     fees: float = 0.0
     note: Optional[str] = None
+    cash_destination_account: Optional[str] = None  # For SELL: account that receives sale proceeds
 
 
 class TransactionEdit(BaseModel):
@@ -26,6 +27,7 @@ class TransactionEdit(BaseModel):
     cash_amount: Optional[float] = None
     fees: Optional[float] = None
     note: Optional[str] = None
+    cash_destination_account: Optional[str] = None
 
 
 class TransactionOut(BaseModel):
@@ -40,6 +42,7 @@ class TransactionOut(BaseModel):
     amount: Optional[float] = None  # qty*price for BUY/SELL, else cash_amount
     fees: float = 0.0
     note: Optional[str] = None
+    cash_destination_account: Optional[str] = None
 
 
 class TransactionListResponse(BaseModel):

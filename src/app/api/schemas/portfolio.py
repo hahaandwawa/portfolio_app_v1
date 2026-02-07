@@ -34,3 +34,17 @@ class PortfolioSummary(BaseModel):
     cash_balance: float
     account_cash: list[AccountCash]
     positions: list[PortfolioPosition]
+
+
+class PositionByAccount(BaseModel):
+    """Per-account position for a symbol (for positions-by-symbol endpoint)."""
+
+    account_name: str
+    quantity: float
+
+
+class PositionsBySymbolResponse(BaseModel):
+    """Response for GET /portfolio/positions-by-symbol."""
+
+    symbol: str
+    positions: list[PositionByAccount]

@@ -29,11 +29,19 @@ def _create_transactions_schema(conn: sqlite3.Connection) -> None:
             price REAL,
             cash_amount REAL,
             fees REAL,
-            note TEXT
+            note TEXT,
+            cash_destination_account TEXT
         )
         """
     )
     conn.commit()
+    # Migration: add cash_destination_account if table existed without it
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(transactions)")
+    columns = [row[1] for row in cur.fetchall()]
+    if "cash_destination_account" not in columns:
+        conn.execute("ALTER TABLE transactions ADD COLUMN cash_destination_account TEXT")
+        conn.commit()
 
 
 def init_database() -> None:

@@ -9,8 +9,11 @@ from fastapi.responses import Response
 
 from src.service.transaction_service import TransactionService, TransactionCreate, TransactionEdit
 from src.service.account_service import AccountService, AccountCreate
+from src.service.portfolio_service import PortfolioService
+from src.service.quote_service import QuoteService
 from src.service.enums import TransactionType
 from src.service.csv_transaction import parse_csv, transactions_to_csv, generate_template_csv
+from src.service.util import _load_config
 from src.utils.exceptions import ValidationError, NotFoundError
 from src.app.api.schemas.transaction import (
     TransactionCreate as TransactionCreateSchema,
@@ -22,9 +25,42 @@ from src.app.api.schemas.transaction import (
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
+_txn_svc: Optional[TransactionService] = None
+_quote_svc: Optional[QuoteService] = None
+_portfolio_svc: Optional[PortfolioService] = None
+
+
+def _get_quote_service() -> QuoteService:
+    global _quote_svc
+    if _quote_svc is None:
+        _quote_svc = QuoteService()
+    return _quote_svc
+
+
+def _get_portfolio_service() -> PortfolioService:
+    global _portfolio_svc
+    if _portfolio_svc is None:
+        config = _load_config()
+        txn_path = config.get("TransactionDBPath", "transactions.sqlite") or "transactions.sqlite"
+        acc_path = config.get("AccountDBPath", "accounts.sqlite") or "accounts.sqlite"
+        txn_core = TransactionService(transaction_db_path=txn_path, account_db_path=acc_path)
+        _portfolio_svc = PortfolioService(transaction_service=txn_core)
+    return _portfolio_svc
+
 
 def _get_transaction_service() -> TransactionService:
-    return TransactionService()
+    global _txn_svc
+    if _txn_svc is None:
+        config = _load_config()
+        txn_path = config.get("TransactionDBPath", "transactions.sqlite") or "transactions.sqlite"
+        acc_path = config.get("AccountDBPath", "accounts.sqlite") or "accounts.sqlite"
+        _txn_svc = TransactionService(
+            transaction_db_path=txn_path,
+            account_db_path=acc_path,
+            quote_service=_get_quote_service(),
+            get_quantity_held=_get_portfolio_service().get_quantity_held,
+        )
+    return _txn_svc
 
 
 def _get_account_service() -> AccountService:
@@ -53,6 +89,7 @@ def _row_to_out(row: dict) -> TransactionOut:
         amount=amount,
         fees=float(row.get("fees") or 0),
         note=row.get("note"),
+        cash_destination_account=row.get("cash_destination_account"),
     )
 
 
@@ -201,6 +238,7 @@ def create_transaction(data: TransactionCreateSchema):
         cash_amount=Decimal(str(data.cash_amount)) if data.cash_amount is not None else None,
         fees=Decimal(str(data.fees)),
         note=data.note,
+        cash_destination_account=data.cash_destination_account,
     )
     try:
         svc.create_transaction(create)
@@ -236,6 +274,7 @@ def update_transaction(txn_id: str, data: TransactionEditSchema):
         cash_amount=Decimal(str(data.cash_amount)) if data.cash_amount is not None else None,
         fees=Decimal(str(data.fees)) if data.fees is not None else None,
         note=data.note,
+        cash_destination_account=data.cash_destination_account,
     )
     try:
         row = svc.edit_transaction(edit)
