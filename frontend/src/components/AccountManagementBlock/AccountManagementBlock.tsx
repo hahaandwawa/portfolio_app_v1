@@ -8,12 +8,14 @@ import type { Account } from "../../types";
 
 interface AccountManagementBlockProps {
   accounts: Account[];
+  accountCashMap?: Record<string, number>;
   onAccountAdded: () => void;
   onAccountRenamed?: (oldName: string, newName: string) => void;
 }
 
 export function AccountManagementBlock({
   accounts,
+  accountCashMap,
   onAccountAdded,
   onAccountRenamed,
 }: AccountManagementBlockProps) {
@@ -58,6 +60,7 @@ export function AccountManagementBlock({
               <AccountListItem
                 key={acc.name}
                 account={acc}
+                cashBalance={accountCashMap?.[acc.name]}
                 onEdit={setEditAccount}
                 onDelete={(a) => {
                   setDeleteAccount(a);

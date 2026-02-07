@@ -122,4 +122,14 @@ export const api = {
     }
     return res.blob();
   },
+
+  /** GET portfolio summary (positions + per-account cash). Optional account filter. */
+  getPortfolio(params?: { account?: string[] }): Promise<import("../types").PortfolioSummary> {
+    const search = new URLSearchParams();
+    if (params?.account?.length) {
+      params.account.forEach((a) => search.append("account", a));
+    }
+    const qs = search.toString();
+    return fetchApi<import("../types").PortfolioSummary>(`/portfolio${qs ? `?${qs}` : ""}`);
+  },
 };

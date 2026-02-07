@@ -28,18 +28,29 @@ const TrashIcon = () => (
   </svg>
 );
 
+function formatCash(value: number): string {
+  return value.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 interface AccountListItemProps {
   account: Account;
+  cashBalance: number | undefined;
   onEdit: (account: Account) => void;
   onDelete: (account: Account) => void;
 }
 
 export function AccountListItem({
   account,
+  cashBalance,
   onEdit,
   onDelete,
 }: AccountListItemProps) {
   const canDelete = account.transaction_count === 0;
+  const cashText =
+    cashBalance === undefined ? "—" : `现金 ¥${formatCash(cashBalance)}`;
 
   return (
     <li className="flex items-center justify-between rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-elevated)] px-4 py-3.5 transition hover:border-[var(--border-color)]">
@@ -53,6 +64,9 @@ export function AccountListItem({
           </span>
           <span className="rounded-lg bg-[var(--accent-soft)] px-2.5 py-1 text-xs font-medium text-[var(--accent)]">
             {account.transaction_count} 笔交易
+          </span>
+          <span className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] px-2.5 py-1 text-xs font-medium text-[var(--text-secondary)]">
+            {cashText}
           </span>
         </div>
       </div>

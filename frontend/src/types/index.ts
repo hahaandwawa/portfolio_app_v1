@@ -56,3 +56,28 @@ export interface TransactionImportResult {
   accounts_created: string[];
   errors: string[];
 }
+
+// Portfolio (from GET /portfolio; optional fields when quotes enabled)
+export interface PortfolioPosition {
+  symbol: string;
+  quantity: number;
+  total_cost: number;
+  display_name?: string | null;
+  latest_price?: number | null;
+  cost_price?: number | null;
+  market_value?: number | null;
+  unrealized_pnl?: number | null;
+  unrealized_pnl_pct?: number | null;
+  weight_pct?: number | null;
+}
+
+export interface AccountCash {
+  account_name: string;
+  cash_balance: number;
+}
+
+export interface PortfolioSummary {
+  cash_balance: number;
+  account_cash: AccountCash[];
+  positions: PortfolioPosition[];
+}
