@@ -3,6 +3,7 @@ import { TransactionTable } from "./TransactionTable";
 import { Pagination } from "./Pagination";
 import { EditTransactionModal } from "./EditTransactionModal";
 import { ConfirmModal } from "../ConfirmModal";
+import { api } from "../../api/client";
 import type { Account, Transaction } from "../../types";
 
 interface TransactionBlockProps {
@@ -45,27 +46,25 @@ export function TransactionBlock({
     const accounts =
       selectedAccountNames.size > 0 ? Array.from(selectedAccountNames) : undefined;
 
-    import("../../api/client").then(({ api }) =>
-      api
-        .getTransactions({
-          account: accounts,
-          page,
-          page_size: 10,
-        })
-        .then((res) => {
-          if (!cancelled) {
-            setData(res);
-          }
-        })
-        .catch((err) => {
-          if (!cancelled) {
-            setError(err instanceof Error ? err.message : "加载失败");
-          }
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        })
-    );
+    api
+      .getTransactions({
+        account: accounts,
+        page,
+        page_size: 10,
+      })
+      .then((res) => {
+        if (!cancelled) {
+          setData(res);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "加载失败");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => {
       cancelled = true;
@@ -127,7 +126,6 @@ export function TransactionBlock({
         transaction={editTransaction}
         accounts={accounts}
         onSubmit={async (txnId, payload) => {
-          const { api } = await import("../../api/client");
           await api.putTransaction(txnId, payload);
         }}
         onSuccess={onRefresh}
@@ -147,7 +145,6 @@ export function TransactionBlock({
           }
           setDeleteLoading(true);
           try {
-            const { api } = await import("../../api/client");
             await api.deleteTransaction(deleteTransaction.txn_id);
             setDeleteTransaction(null);
             setDeleteConfirmStep(1);

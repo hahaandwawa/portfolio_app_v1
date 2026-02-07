@@ -20,6 +20,19 @@ async function fetchApi<T>(
   return res.json();
 }
 
+async function getApiError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text) as { detail?: string | string[] };
+    const d = j.detail;
+    if (typeof d === "string") return d;
+    if (Array.isArray(d)) return d.join("; ");
+    return text || res.statusText;
+  } catch {
+    return text || res.statusText;
+  }
+}
+
 export const api = {
   getAccounts: () =>
     fetchApi<{ name: string; transaction_count: number }[]>("/accounts"),
@@ -65,4 +78,48 @@ export const api = {
     }),
   deleteTransaction: (txnId: string) =>
     fetchApi<void>(`/transactions/${txnId}`, { method: "DELETE" }),
+
+  /** POST CSV file; returns import result. */
+  async importTransactionsCsv(file: File): Promise<import("../types").TransactionImportResult> {
+    const url = `${API_BASE}/transactions/import`;
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(url, {
+      method: "POST",
+      body: form,
+      headers: {}, // do not set Content-Type; browser sets multipart boundary
+    });
+    if (!res.ok) {
+      const msg = await getApiError(res);
+      throw new Error(msg);
+    }
+    return res.json();
+  },
+
+  /** GET CSV blob and trigger download. Optional account filter. */
+  async exportTransactionsCsv(params?: { account?: string[] }): Promise<Blob> {
+    const search = new URLSearchParams();
+    if (params?.account?.length) {
+      params.account.forEach((a) => search.append("account", a));
+    }
+    const qs = search.toString();
+    const url = `${API_BASE}/transactions/export${qs ? `?${qs}` : ""}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const msg = await getApiError(res);
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
+
+  /** GET template CSV and trigger download. */
+  async downloadTransactionsTemplate(): Promise<Blob> {
+    const url = `${API_BASE}/transactions/template`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const msg = await getApiError(res);
+      throw new Error(msg);
+    }
+    return res.blob();
+  },
 };

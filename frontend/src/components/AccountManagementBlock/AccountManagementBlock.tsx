@@ -3,6 +3,7 @@ import { AddAccountModal } from "./AddAccountModal";
 import { EditAccountModal } from "./EditAccountModal";
 import { AccountListItem } from "./AccountListItem";
 import { ConfirmModal } from "../ConfirmModal";
+import { api } from "../../api/client";
 import type { Account } from "../../types";
 
 interface AccountManagementBlockProps {
@@ -72,7 +73,6 @@ export function AccountManagementBlock({
         isOpen={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         onSubmit={async (name) => {
-          const { api } = await import("../../api/client");
           await api.postAccount(name);
         }}
         onSuccess={onRefresh}
@@ -83,7 +83,6 @@ export function AccountManagementBlock({
         onClose={() => setEditAccount(null)}
         account={editAccount}
         onSubmit={async (oldName, newName) => {
-          const { api } = await import("../../api/client");
           await api.putAccount(oldName, newName);
         }}
         onSuccess={(oldName, newName) => {
@@ -106,7 +105,6 @@ export function AccountManagementBlock({
           }
           setDeleteLoading(true);
           try {
-            const { api } = await import("../../api/client");
             await api.deleteAccount(deleteAccount.name);
             setDeleteAccount(null);
             setDeleteStep(1);

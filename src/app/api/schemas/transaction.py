@@ -48,3 +48,9 @@ class TransactionListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class TransactionImportResult(BaseModel):
+    imported: int
+    accounts_created: list[str]
+    errors: list[str]

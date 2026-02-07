@@ -3,6 +3,7 @@ import { TopBar } from "./components/TopBar/TopBar";
 import { AccountManagementBlock } from "./components/AccountManagementBlock/AccountManagementBlock";
 import { TransactionBlock } from "./components/TransactionBlock/TransactionBlock";
 import { Footer } from "./components/Footer";
+import { api } from "./api/client";
 import type { Account } from "./types";
 
 function App() {
@@ -13,8 +14,8 @@ function App() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const loadAccounts = () => {
-    import("./api/client")
-      .then(({ api }) => api.getAccounts())
+    api
+      .getAccounts()
       .then((list) => {
         setAccounts(list);
         setSelectedAccountNames((prev) => {

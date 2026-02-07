@@ -50,3 +50,9 @@ export interface TransactionEditPayload {
   fees?: number;
   note?: string;
 }
+
+export interface TransactionImportResult {
+  imported: number;
+  accounts_created: string[];
+  errors: string[];
+}
