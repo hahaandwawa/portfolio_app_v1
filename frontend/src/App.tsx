@@ -81,13 +81,13 @@ function App() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <TopBar
+        accounts={accounts}
+        selectedAccountNames={selectedAccountNames}
+        onAccountSelectionChange={onAccountSelectionChange}
+        onTransactionAdded={onRefresh}
+      />
       <div className="mx-auto w-full max-w-5xl flex-1 px-8 md:px-12">
-        <TopBar
-          accounts={accounts}
-          selectedAccountNames={selectedAccountNames}
-          onAccountSelectionChange={onAccountSelectionChange}
-          onTransactionAdded={onRefresh}
-        />
         <AccountManagementBlock
           accounts={accounts}
           accountCashMap={accountCashMap}

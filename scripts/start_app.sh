@@ -11,9 +11,16 @@ if lsof -ti:8001 >/dev/null 2>&1; then
   sleep 1
 fi
 
+# Use project venv if present, otherwise use current env (e.g. conda)
+if [[ -x "$ROOT/venv/bin/uvicorn" ]]; then
+  UVICORN="$ROOT/venv/bin/uvicorn"
+else
+  UVICORN=uvicorn
+fi
+
 # Start backend in background
 echo "Starting backend on http://127.0.0.1:8001..."
-PYTHONPATH=. ./venv/bin/uvicorn src.app.main:app --host 127.0.0.1 --port 8001 &
+PYTHONPATH="$ROOT" "$UVICORN" src.app.main:app --host 127.0.0.1 --port 8001 &
 BACKEND_PID=$!
 
 # Ensure backend is killed when this script exits
@@ -45,6 +52,26 @@ if [ "$BACKEND_READY" -eq 0 ]; then
   exit 1
 fi
 
+# Ensure npm is on PATH (e.g. when using nvm/fnm from a script)
+if ! command -v npm >/dev/null 2>&1; then
+  if [[ -f "$HOME/.nvm/nvm.sh" ]]; then
+    source "$HOME/.nvm/nvm.sh"
+  elif [[ -f "$HOME/.fnm/fnm" ]]; then
+    eval "$("$HOME/.fnm/fnm" env)"
+  fi
+fi
+if ! command -v npm >/dev/null 2>&1; then
+  echo "npm not found. Install Node.js (https://nodejs.org) or ensure it is on your PATH."
+  kill $BACKEND_PID 2>/dev/null
+  exit 1
+fi
+
+# Install frontend deps if needed (so vite is available)
+if [[ ! -d "$ROOT/frontend/node_modules" ]] || [[ ! -x "$ROOT/frontend/node_modules/.bin/vite" ]]; then
+  echo "Installing frontend dependencies..."
+  (cd "$ROOT/frontend" && npm install)
+fi
+
 # Start frontend (runs in foreground)
 echo "Starting frontend on http://localhost:5173..."
-cd frontend && npm run dev
+cd "$ROOT/frontend" && npm run dev

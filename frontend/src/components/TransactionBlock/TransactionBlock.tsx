@@ -50,7 +50,7 @@ export function TransactionBlock({
       .getTransactions({
         account: accounts,
         page,
-        page_size: 10,
+        page_size: 8,
       })
       .then((res) => {
         if (!cancelled) {
@@ -73,7 +73,7 @@ export function TransactionBlock({
 
   if (error) {
     return (
-      <section className="py-8 text-center">
+      <section className="py-3 text-center">
         <p className="text-center text-red-600 dark:text-red-400">{error}</p>
         <p className="mt-2 text-center text-sm text-[var(--text-secondary)]">
           请确保后端 API 已启动 (uvicorn src.app.main:app)
@@ -83,8 +83,8 @@ export function TransactionBlock({
   }
 
   return (
-    <section className="py-6">
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 shadow-[var(--shadow-md)] md:p-8">
+    <section className="py-3">
+      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] pt-4 shadow-[var(--shadow-md)] px-6 pb-4 md:pt-5 md:px-8 md:pb-5">
         <div className="mb-4">
           <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
             交易记录
@@ -93,7 +93,7 @@ export function TransactionBlock({
             {data ? `共 ${data.total} 笔交易` : "加载中..."}
           </p>
         </div>
-        <div className="h-[360px] overflow-y-auto -mx-2 px-2">
+        <div className="-mx-2 px-2 h-[475px] overflow-hidden">
           {loading ? (
             <div className="flex h-full items-center justify-center text-[var(--text-secondary)]">
               加载中...
@@ -110,7 +110,7 @@ export function TransactionBlock({
           ) : null}
         </div>
         {data && data.total_pages > 0 && (
-          <div className="mt-4">
+          <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
           <Pagination
             page={data.page}
             totalPages={data.total_pages}

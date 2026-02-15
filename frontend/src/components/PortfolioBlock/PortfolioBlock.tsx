@@ -76,8 +76,8 @@ export function PortfolioBlock({
 
   if (error) {
     return (
-      <section className="py-6">
-        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 shadow-[var(--shadow-md)] md:p-8">
+      <section className="py-3">
+        <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] pt-4 shadow-[var(--shadow-md)] px-6 pb-6 md:pt-5 md:px-8 md:pb-8">
           <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
             持仓明细
           </h2>
@@ -90,8 +90,8 @@ export function PortfolioBlock({
   }
 
   return (
-    <section className="py-6">
-      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] p-6 shadow-[var(--shadow-md)] md:p-8">
+    <section className="py-3">
+      <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] pt-4 shadow-[var(--shadow-md)] px-6 pb-6 md:pt-5 md:px-8 md:pb-8">
         <div className="mb-4">
           <h2 className="text-xl font-bold tracking-tight text-[var(--text-primary)]">
             持仓明细

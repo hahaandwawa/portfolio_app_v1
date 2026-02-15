@@ -23,8 +23,8 @@ export function TopBar({
   const [csvModalOpen, setCsvModalOpen] = useState(false);
   return (
     <>
-      <header className="border-b border-[var(--border-color)] bg-[var(--bg-card)] px-6 py-4 shadow-sm">
-        <div className="flex items-center justify-between">
+      <header className="w-full border-b border-[var(--border-color)] bg-[var(--bg-card)] shadow-sm">
+        <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-8 py-4 md:px-12">
           <div className="flex items-center gap-4">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md">
               <span className="text-lg font-bold">投</span>
