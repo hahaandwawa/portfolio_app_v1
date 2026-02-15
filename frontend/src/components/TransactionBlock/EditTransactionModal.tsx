@@ -1,31 +1,15 @@
 import { useEffect, useState } from "react";
 import { Modal } from "../Modal";
 import { ConfirmModal } from "../ConfirmModal";
-import type { Account, Transaction, TransactionEditPayload, TransactionType } from "../../types";
-
-const TXN_TYPES: { value: TransactionType; label: string }[] = [
-  { value: "BUY", label: "买入" },
-  { value: "SELL", label: "卖出" },
-  { value: "CASH_DEPOSIT", label: "现金存入" },
-  { value: "CASH_WITHDRAW", label: "现金取出" },
-];
-
-function toLocalDatetime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  } catch {
-    return "";
-  }
-}
+import type { Account, Transaction, TransactionPayload, TransactionType } from "../../types";
+import { TXN_TYPES, isoToLocalDatetime } from "../../utils/transaction";
 
 interface EditTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   transaction: Transaction | null;
   accounts: Account[];
-  onSubmit: (txnId: string, data: TransactionEditPayload) => Promise<void>;
+  onSubmit: (txnId: string, data: TransactionPayload) => Promise<void>;
   onSuccess?: () => void;
 }
 
@@ -55,7 +39,7 @@ export function EditTransactionModal({
     if (isOpen && transaction) {
       setAccountName(transaction.account_name);
       setTxnType(transaction.txn_type as TransactionType);
-      setTxnTime(toLocalDatetime(transaction.txn_time_est));
+      setTxnTime(isoToLocalDatetime(transaction.txn_time_est));
       setSymbol(transaction.symbol ?? "");
       setQuantity(transaction.quantity?.toString() ?? "");
       setPrice(transaction.price?.toString() ?? "");
@@ -73,10 +57,10 @@ export function EditTransactionModal({
   const isStock = txnType === "BUY" || txnType === "SELL";
   const isCash = txnType === "CASH_DEPOSIT" || txnType === "CASH_WITHDRAW";
 
-  const buildPayload = (): TransactionEditPayload | null => {
+  const buildPayload = (): TransactionPayload | null => {
     if (!accountName || !transaction) return null;
 
-    const payload: TransactionEditPayload = {
+    const payload: TransactionPayload = {
       account_name: accountName,
       txn_type: txnType,
       txn_time_est: new Date(txnTime).toISOString(),

@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { TopBar } from "./components/TopBar/TopBar";
+import { GeneralOverviewBlock } from "./components/GeneralOverviewBlock/GeneralOverviewBlock";
 import { AccountManagementBlock } from "./components/AccountManagementBlock/AccountManagementBlock";
 import { PortfolioBlock } from "./components/PortfolioBlock/PortfolioBlock";
 import { TransactionBlock } from "./components/TransactionBlock/TransactionBlock";
@@ -17,7 +18,7 @@ function App() {
   const [portfolioLoading, setPortfolioLoading] = useState(true);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
 
-  const loadAccounts = () => {
+  const loadAccounts = useCallback(() => {
     api
       .getAccounts()
       .then((list) => {
@@ -30,16 +31,18 @@ function App() {
         });
       })
       .catch(() => setAccounts([]));
-  };
-
-  useEffect(() => {
-    loadAccounts();
   }, []);
 
   useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  // Fetch portfolio when selected accounts or refresh key change.
+  // Loading/error state is reset in event handlers (handleAccountSelectionChange,
+  // onRefresh) to avoid synchronous setState in the effect body.
+  // The initial render already starts with portfolioLoading=true.
+  useEffect(() => {
     let cancelled = false;
-    setPortfolioLoading(true);
-    setPortfolioError(null);
     const accountParam =
       selectedAccountNames.size > 0 ? Array.from(selectedAccountNames) : undefined;
     api
@@ -61,33 +64,43 @@ function App() {
     };
   }, [selectedAccountNames, refreshKey]);
 
+  const accountCashList = portfolio?.account_cash;
   const accountCashMap = useMemo(() => {
-    if (!portfolio?.account_cash) return undefined;
+    if (!accountCashList) return undefined;
     const map: Record<string, number> = {};
-    for (const ac of portfolio.account_cash) {
+    for (const ac of accountCashList) {
       map[ac.account_name] = ac.cash_balance;
     }
     return map;
-  }, [portfolio?.account_cash]);
+  }, [accountCashList]);
 
-  const onAccountSelectionChange = (selected: Set<string>) => {
+  const handleAccountSelectionChange = useCallback((selected: Set<string>) => {
     setSelectedAccountNames(selected);
-  };
+    setPortfolioLoading(true);
+    setPortfolioError(null);
+  }, []);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
+    setPortfolioLoading(true);
+    setPortfolioError(null);
     loadAccounts();
-  };
+  }, [loadAccounts]);
 
   return (
     <div className="flex min-h-screen flex-col">
       <TopBar
         accounts={accounts}
         selectedAccountNames={selectedAccountNames}
-        onAccountSelectionChange={onAccountSelectionChange}
+        onAccountSelectionChange={handleAccountSelectionChange}
         onTransactionAdded={onRefresh}
       />
       <div className="mx-auto w-full max-w-5xl flex-1 px-8 md:px-12">
+        <GeneralOverviewBlock
+          portfolio={portfolio}
+          loading={portfolioLoading}
+          error={portfolioError}
+        />
         <AccountManagementBlock
           accounts={accounts}
           accountCashMap={accountCashMap}

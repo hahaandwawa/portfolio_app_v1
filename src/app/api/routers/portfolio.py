@@ -16,6 +16,7 @@ from src.app.api.schemas.portfolio import (
 router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 _quote_service: Optional[QuoteService] = None
+_portfolio_service: Optional[PortfolioService] = None
 
 
 def _get_quote_service() -> QuoteService:
@@ -26,7 +27,10 @@ def _get_quote_service() -> QuoteService:
 
 
 def _get_portfolio_service() -> PortfolioService:
-    return PortfolioService(quote_service=_get_quote_service())
+    global _portfolio_service
+    if _portfolio_service is None:
+        _portfolio_service = PortfolioService(quote_service=_get_quote_service())
+    return _portfolio_service
 
 
 @router.get("", response_model=PortfolioSummary)

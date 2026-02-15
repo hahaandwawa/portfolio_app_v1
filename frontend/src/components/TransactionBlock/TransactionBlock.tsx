@@ -43,12 +43,12 @@ export function TransactionBlock({
     setLoading(true);
     setError(null);
 
-    const accounts =
+    const accountFilter =
       selectedAccountNames.size > 0 ? Array.from(selectedAccountNames) : undefined;
 
     api
       .getTransactions({
-        account: accounts,
+        account: accountFilter,
         page,
         page_size: 8,
       })
@@ -111,11 +111,11 @@ export function TransactionBlock({
         </div>
         {data && data.total_pages > 0 && (
           <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] bg-[var(--bg-card)]">
-          <Pagination
-            page={data.page}
-            totalPages={data.total_pages}
-            onPageChange={setPage}
-          />
+            <Pagination
+              page={data.page}
+              totalPages={data.total_pages}
+              onPageChange={setPage}
+            />
           </div>
         )}
       </div>

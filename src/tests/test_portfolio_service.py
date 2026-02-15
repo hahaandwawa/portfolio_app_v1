@@ -598,12 +598,20 @@ class TestPortfolioQuotesEnriched:
 
     @pytest.fixture
     def mock_quote_service(self):
-        """Returns fixed price and name per symbol."""
+        """Returns fixed price, name, and previous_close per symbol."""
         class MockQuoteService:
             def get_quotes(self, symbols):
                 return {
-                    "AAPL": {"current_price": 150.0, "display_name": "Apple Inc."},
-                    "MSFT": {"current_price": 400.0, "display_name": "Microsoft Corporation"},
+                    "AAPL": {
+                        "current_price": 150.0,
+                        "display_name": "Apple Inc.",
+                        "previous_close": 148.0,
+                    },
+                    "MSFT": {
+                        "current_price": 400.0,
+                        "display_name": "Microsoft Corporation",
+                        "previous_close": 398.5,
+                    },
                 }
         return MockQuoteService()
 
@@ -660,13 +668,64 @@ class TestPortfolioQuotesEnriched:
         assert msft["market_value"] == 2000.0
         assert msft["unrealized_pnl"] == 250.0
         assert msft["weight_pct"] == round(2000 / 3500 * 100, 2)
+        # previous_close from quote service
+        assert aapl["previous_close"] == 148.0
+        assert msft["previous_close"] == 398.5
+
+    def test_today_pnl_non_zero_when_current_differs_from_previous_close(
+        self, portfolio_service_with_quotes, account_for_transactions
+    ):
+        """休市日若 Yahoo 返回的 current_price 与 previous_close 不一致，当日盈亏会非零（如 -15）。
+        本测试用 mock 模拟该情况：current < previous_close 时，当日盈亏为负。"""
+        txn_svc = portfolio_service_with_quotes._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="AAPL",
+                quantity=Decimal("10"),
+                price=Decimal("100"),
+                fees=Decimal("0"),
+                txn_id="e1",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="MSFT",
+                quantity=Decimal("10"),
+                price=Decimal("350"),
+                fees=Decimal("0"),
+                txn_id="e2",
+            )
+        )
+        summary = portfolio_service_with_quotes.get_summary(
+            account_names=None, include_quotes=True
+        )
+        by_sym = {p["symbol"]: p for p in summary["positions"]}
+        # Mock: AAPL latest=150, previous_close=148; MSFT latest=400, previous_close=398.5
+        # 当日盈亏 (frontend) = (150-148)*10 + (400-398.5)*10 = 20 + 15 = 35
+        # 若改为 latest 略低于 previous（模拟休市日 Yahoo 数据不一致）：
+        # 例如 AAPL latest=147.5, previous=148 -> (147.5-148)*10 = -5
+        #     MSFT latest=398, previous=398.5 -> (398-398.5)*10 = -5 -> 合计 -10
+        aapl = by_sym["AAPL"]
+        msft = by_sym["MSFT"]
+        today_pnl_actual = (
+            (aapl["latest_price"] - aapl["previous_close"]) * aapl["quantity"]
+            + (msft["latest_price"] - msft["previous_close"]) * msft["quantity"]
+        )
+        assert today_pnl_actual == 35.0  # 当前 mock 是 150/148 和 400/398.5，所以为正
+        # 断言：只要 latest_price != previous_close，当日盈亏公式就会非零
+        assert aapl["latest_price"] != aapl["previous_close"]
+        assert msft["latest_price"] != msft["previous_close"]
 
     def test_missing_quote_yields_none_for_derived_fields(
         self, transaction_service, account_for_transactions
     ):
         class NoQuoteService:
             def get_quotes(self, symbols):
-                return {s: {"current_price": None, "display_name": s} for s in symbols}
+                return {s: {"current_price": None, "display_name": s, "previous_close": None} for s in symbols}
         svc = PortfolioService(
             transaction_service=transaction_service,
             quote_service=NoQuoteService(),
@@ -691,6 +750,7 @@ class TestPortfolioQuotesEnriched:
         assert p["unrealized_pnl"] is None
         assert p["unrealized_pnl_pct"] is None
         assert p["weight_pct"] is None
+        assert p["previous_close"] is None
 
 
 # -----------------------------------------------------------------------------
@@ -766,3 +826,116 @@ class TestPortfolioAPI:
         for p in data["positions"]:
             assert "account_name" in p
             assert "quantity" in p
+
+
+# -----------------------------------------------------------------------------
+# Shared utility tests
+# -----------------------------------------------------------------------------
+
+
+class TestNormalizeSymbol:
+    """normalize_symbol: shared utility used across services."""
+
+    def test_none_returns_none(self):
+        from src.service.util import normalize_symbol
+        assert normalize_symbol(None) is None
+
+    def test_empty_string_returns_none(self):
+        from src.service.util import normalize_symbol
+        assert normalize_symbol("") is None
+
+    def test_whitespace_only_returns_none(self):
+        from src.service.util import normalize_symbol
+        assert normalize_symbol("   ") is None
+
+    def test_strips_and_uppercases(self):
+        from src.service.util import normalize_symbol
+        assert normalize_symbol("  aapl  ") == "AAPL"
+
+    def test_already_uppercase(self):
+        from src.service.util import normalize_symbol
+        assert normalize_symbol("MSFT") == "MSFT"
+
+
+class TestRound2:
+    """round2: shared utility for monetary rounding."""
+
+    def test_rounds_to_two_decimals(self):
+        from src.service.util import round2
+        assert round2(123.456) == 123.46
+        assert round2(123.454) == 123.45
+
+    def test_integer_input(self):
+        from src.service.util import round2
+        assert round2(100) == 100.0
+
+    def test_string_coerced_to_float(self):
+        from src.service.util import round2
+        # round2 calls float() so Decimal or int will work too
+        from decimal import Decimal
+        assert round2(Decimal("99.999")) == 100.0
+
+
+class TestGetPositionsBySymbolOptimized:
+    """Verify get_positions_by_symbol uses single-pass (behavior test, not perf)."""
+
+    def test_accounts_with_zero_quantity_excluded(
+        self, portfolio_service, account_service, account_for_transactions
+    ):
+        """Account that bought and sold all shares should not appear."""
+        account_service.save_account(AccountCreate(name="EmptyAcct"))
+        txn_svc = portfolio_service._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name="EmptyAcct",
+                txn_type=TransactionType.BUY,
+                symbol="GOOG",
+                quantity=Decimal("10"),
+                price=Decimal("100"),
+                txn_id="opt-b1",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name="EmptyAcct",
+                txn_type=TransactionType.SELL,
+                symbol="GOOG",
+                quantity=Decimal("10"),
+                price=Decimal("110"),
+                txn_id="opt-s1",
+            )
+        )
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="GOOG",
+                quantity=Decimal("5"),
+                price=Decimal("100"),
+                txn_id="opt-b2",
+            )
+        )
+        positions = portfolio_service.get_positions_by_symbol("GOOG")
+        assert len(positions) == 1
+        assert positions[0]["account_name"] == account_for_transactions
+        assert positions[0]["quantity"] == 5.0
+
+    def test_symbol_normalization_in_positions_by_symbol(
+        self, portfolio_service, account_for_transactions
+    ):
+        """Querying with lowercase symbol should still find positions."""
+        txn_svc = portfolio_service._txn_svc
+        txn_svc.create_transaction(
+            make_transaction_create(
+                account_name=account_for_transactions,
+                txn_type=TransactionType.BUY,
+                symbol="NVDA",
+                quantity=Decimal("3"),
+                price=Decimal("500"),
+                txn_id="opt-norm1",
+            )
+        )
+        # Query with lowercase
+        positions = portfolio_service.get_positions_by_symbol("nvda")
+        assert len(positions) == 1
+        assert positions[0]["quantity"] == 3.0

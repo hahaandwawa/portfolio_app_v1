@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
 from src.service.account_service import AccountService, AccountCreate
@@ -7,13 +9,22 @@ from src.app.api.schemas.account import AccountCreate as AccountCreateSchema, Ac
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
+_acct_svc: Optional[AccountService] = None
+_txn_svc: Optional[TransactionService] = None
+
 
 def _get_account_service() -> AccountService:
-    return AccountService()
+    global _acct_svc
+    if _acct_svc is None:
+        _acct_svc = AccountService()
+    return _acct_svc
 
 
 def _get_transaction_service() -> TransactionService:
-    return TransactionService()
+    global _txn_svc
+    if _txn_svc is None:
+        _txn_svc = TransactionService()
+    return _txn_svc
 
 
 @router.get("", response_model=list[AccountOut])
@@ -22,11 +33,11 @@ def list_accounts():
     svc = _get_account_service()
     raw = svc.list_accounts()
     txn_svc = _get_transaction_service()
-    result = []
-    for acc in raw:
-        count = len(txn_svc.list_transactions(account_names=[acc["name"]]))
-        result.append(AccountOut(name=acc["name"], transaction_count=count))
-    return result
+    counts = txn_svc.count_transactions_by_account()
+    return [
+        AccountOut(name=acc["name"], transaction_count=counts.get(acc["name"], 0))
+        for acc in raw
+    ]
 
 
 @router.post("", response_model=AccountOut, status_code=201)
@@ -49,7 +60,7 @@ def update_account(account_name: str, data: AccountCreateSchema):
         svc.edit_account(account_name, AccountCreate(name=data.name))
         if data.name != account_name:
             txn_svc.update_account_name_in_transactions(account_name, data.name)
-        count = len(txn_svc.list_transactions(account_names=[data.name]))
+        count = txn_svc.count_transactions(account_names=[data.name])
         return AccountOut(name=data.name, transaction_count=count)
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=e.message)
@@ -62,7 +73,7 @@ def delete_account(account_name: str):
     """Delete an account. Fails if account has transactions."""
     svc = _get_account_service()
     txn_svc = _get_transaction_service()
-    count = len(txn_svc.list_transactions(account_names=[account_name]))
+    count = txn_svc.count_transactions(account_names=[account_name])
     if count > 0:
         raise HTTPException(
             status_code=400,

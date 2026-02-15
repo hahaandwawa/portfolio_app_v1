@@ -25,10 +25,6 @@ export function AccountManagementBlock({
   const [deleteStep, setDeleteStep] = useState<1 | 2>(1);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const onRefresh = () => {
-    onAccountAdded();
-  };
-
   return (
     <section className="py-3">
       <div className="rounded-2xl border border-[var(--border-color)] bg-[var(--bg-card)] pt-4 shadow-[var(--shadow-md)] px-6 pb-6 md:pt-5 md:px-8 md:pb-8">
@@ -50,13 +46,13 @@ export function AccountManagementBlock({
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
-          {accounts.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[var(--text-secondary)]">
-              暂无账户，点击「添加账户」创建
-            </p>
-          ) : (
-            accounts.map((acc) => (
+        {accounts.length === 0 ? (
+          <p className="py-8 text-center text-sm text-[var(--text-secondary)]">
+            暂无账户，点击「添加账户」创建
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {accounts.map((acc) => (
               <AccountListItem
                 key={acc.name}
                 account={acc}
@@ -67,9 +63,9 @@ export function AccountManagementBlock({
                   setDeleteStep(1);
                 }}
               />
-            ))
-          )}
-        </div>
+            ))}
+          </ul>
+        )}
       </div>
 
       <AddAccountModal
@@ -78,7 +74,7 @@ export function AccountManagementBlock({
         onSubmit={async (name) => {
           await api.postAccount(name);
         }}
-        onSuccess={onRefresh}
+        onSuccess={onAccountAdded}
       />
 
       <EditAccountModal
@@ -90,7 +86,7 @@ export function AccountManagementBlock({
         }}
         onSuccess={(oldName, newName) => {
           onAccountRenamed?.(oldName, newName);
-          setTimeout(() => onRefresh(), 0);
+          setTimeout(() => onAccountAdded(), 0);
         }}
       />
 
@@ -111,7 +107,7 @@ export function AccountManagementBlock({
             await api.deleteAccount(deleteAccount.name);
             setDeleteAccount(null);
             setDeleteStep(1);
-            setTimeout(() => onRefresh(), 0);
+            setTimeout(() => onAccountAdded(), 0);
             return true;
           } finally {
             setDeleteLoading(false);

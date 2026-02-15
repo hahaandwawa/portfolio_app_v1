@@ -1,17 +1,11 @@
 import type { Transaction } from "../../types";
+import { TXN_TYPE_LABELS } from "../../utils/transaction";
 
 interface TransactionTableProps {
   transactions: Transaction[];
   onEdit: (txn: Transaction) => void;
   onDelete: (txn: Transaction) => void;
 }
-
-const TXN_TYPE_LABELS: Record<string, string> = {
-  BUY: "买入",
-  SELL: "卖出",
-  CASH_DEPOSIT: "现金存入",
-  CASH_WITHDRAW: "现金取出",
-};
 
 function formatDate(iso: string): string {
   try {

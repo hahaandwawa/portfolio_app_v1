@@ -98,13 +98,6 @@ _TEMPLATE_EXAMPLES: List[dict] = [
 # ---------------------------------------------------------------------------
 
 
-def _strip_bom(text: str) -> str:
-    """Remove UTF-8 BOM if present."""
-    if text.startswith("\ufeff"):
-        return text[1:]
-    return text
-
-
 def _parse_datetime(value: str) -> datetime:
     """Parse ISO-style datetime (with or without timezone), or date-only ``YYYY-MM-DD``.
 
@@ -156,8 +149,6 @@ def parse_csv(raw: bytes) -> Tuple[List[TransactionCreate], List[str]]:
         text = raw.decode("utf-8-sig")  # handles BOM automatically
     except UnicodeDecodeError:
         return [], ["File is not valid UTF-8."]
-
-    text = _strip_bom(text)
 
     reader = csv.DictReader(io.StringIO(text))
 

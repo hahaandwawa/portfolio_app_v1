@@ -1,26 +1,15 @@
 import { useEffect, useState, useCallback } from "react";
 import { Modal } from "../Modal";
-import type { Account, TransactionCreatePayload, TransactionType } from "../../types";
+import type { Account, TransactionPayload, TransactionType } from "../../types";
 import { api } from "../../api/client";
+import { TXN_TYPES, toLocalDatetime } from "../../utils/transaction";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   accounts: Account[];
-  onSubmit: (data: TransactionCreatePayload) => Promise<void>;
+  onSubmit: (data: TransactionPayload) => Promise<void>;
   onSuccess?: () => void;
-}
-
-const TXN_TYPES: { value: TransactionType; label: string }[] = [
-  { value: "BUY", label: "买入" },
-  { value: "SELL", label: "卖出" },
-  { value: "CASH_DEPOSIT", label: "现金存入" },
-  { value: "CASH_WITHDRAW", label: "现金取出" },
-];
-
-function toLocalDatetime(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function AddTransactionModal({
@@ -95,7 +84,7 @@ export function AddTransactionModal({
       return;
     }
 
-    const payload: TransactionCreatePayload = {
+    const payload: TransactionPayload = {
       account_name: accountName,
       txn_type: txnType,
       txn_time_est: new Date(txnTime).toISOString(),

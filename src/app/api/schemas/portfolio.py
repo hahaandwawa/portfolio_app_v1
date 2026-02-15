@@ -19,6 +19,7 @@ class PortfolioPosition(BaseModel):
     unrealized_pnl: Optional[float] = None
     unrealized_pnl_pct: Optional[float] = None
     weight_pct: Optional[float] = None
+    previous_close: Optional[float] = None
 
 
 class AccountCash(BaseModel):

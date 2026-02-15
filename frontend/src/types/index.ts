@@ -28,7 +28,7 @@ export interface TransactionListResponse {
   total_pages: number;
 }
 
-export interface TransactionCreatePayload {
+export interface TransactionPayload {
   account_name: string;
   txn_type: TransactionType;
   txn_time_est: string;
@@ -41,18 +41,6 @@ export interface TransactionCreatePayload {
   cash_destination_account?: string | null;
 }
 
-export interface TransactionEditPayload {
-  account_name: string;
-  txn_type: TransactionType;
-  txn_time_est: string;
-  symbol?: string;
-  quantity?: number;
-  price?: number;
-  cash_amount?: number;
-  fees?: number;
-  note?: string;
-  cash_destination_account?: string | null;
-}
 
 export interface TransactionImportResult {
   imported: number;
@@ -72,6 +60,7 @@ export interface PortfolioPosition {
   unrealized_pnl?: number | null;
   unrealized_pnl_pct?: number | null;
   weight_pct?: number | null;
+  previous_close?: number | null;
 }
 
 export interface AccountCash {

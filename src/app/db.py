@@ -51,13 +51,16 @@ def init_database() -> None:
     txn_path = config.get("TransactionDBPath", "./data/transactions.sqlite")
 
     for path_str in (account_path, txn_path):
-        path = Path(path_str)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        Path(path_str).parent.mkdir(parents=True, exist_ok=True)
 
     conn_acc = sqlite3.connect(account_path)
-    _create_accounts_schema(conn_acc)
-    conn_acc.close()
+    try:
+        _create_accounts_schema(conn_acc)
+    finally:
+        conn_acc.close()
 
     conn_txn = sqlite3.connect(txn_path)
-    _create_transactions_schema(conn_txn)
-    conn_txn.close()
+    try:
+        _create_transactions_schema(conn_txn)
+    finally:
+        conn_txn.close()

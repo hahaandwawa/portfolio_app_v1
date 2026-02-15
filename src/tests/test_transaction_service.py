@@ -994,3 +994,122 @@ class TestTransactionCashDestination:
             TransactionEdit(txn_id="s-edit-cd", cash_destination_account="Other")
         )
         assert edited["cash_destination_account"] == "Other"
+
+
+# -----------------------------------------------------------------------------
+# count_transactions
+# -----------------------------------------------------------------------------
+
+class TestCountTransactions:
+    """count_transactions: total count, filtered by account(s)."""
+
+    def test_count_empty_db(self, transaction_service, account_for_transactions):
+        assert transaction_service.count_transactions() == 0
+
+    def test_count_all(self, transaction_service, account_for_transactions):
+        transaction_service.create_transaction(
+            make_transaction_create(account_name=account_for_transactions, txn_id="cnt-1")
+        )
+        transaction_service.create_transaction(
+            make_transaction_create(account_name=account_for_transactions, txn_id="cnt-2")
+        )
+        assert transaction_service.count_transactions() == 2
+
+    def test_count_filtered_by_account(
+        self, transaction_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="OtherBroker"))
+        transaction_service.create_transaction(
+            make_transaction_create(account_name=account_for_transactions, txn_id="cnt-a1")
+        )
+        transaction_service.create_transaction(
+            make_transaction_create(account_name="OtherBroker", txn_id="cnt-a2")
+        )
+        transaction_service.create_transaction(
+            make_transaction_create(account_name="OtherBroker", txn_id="cnt-a3")
+        )
+        assert transaction_service.count_transactions(account_names=[account_for_transactions]) == 1
+        assert transaction_service.count_transactions(account_names=["OtherBroker"]) == 2
+        assert transaction_service.count_transactions(account_names=[account_for_transactions, "OtherBroker"]) == 3
+
+    def test_count_nonexistent_account_returns_zero(
+        self, transaction_service, account_for_transactions
+    ):
+        assert transaction_service.count_transactions(account_names=["NoSuch"]) == 0
+
+
+class TestCountTransactionsByAccount:
+    """count_transactions_by_account: {account_name: count} for all."""
+
+    def test_empty_db(self, transaction_service, account_for_transactions):
+        assert transaction_service.count_transactions_by_account() == {}
+
+    def test_multiple_accounts(
+        self, transaction_service, account_service, account_for_transactions
+    ):
+        account_service.save_account(AccountCreate(name="BrokerX"))
+        transaction_service.create_transaction(
+            make_transaction_create(account_name=account_for_transactions, txn_id="cba-1")
+        )
+        transaction_service.create_transaction(
+            make_transaction_create(account_name=account_for_transactions, txn_id="cba-2")
+        )
+        transaction_service.create_transaction(
+            make_transaction_create(account_name="BrokerX", txn_id="cba-3")
+        )
+        counts = transaction_service.count_transactions_by_account()
+        assert counts[account_for_transactions] == 2
+        assert counts["BrokerX"] == 1
+
+
+# -----------------------------------------------------------------------------
+# edit_transaction: restore original on validation failure
+# -----------------------------------------------------------------------------
+
+class TestEditTransactionSafety:
+    """edit_transaction restores original if the edited version fails validation."""
+
+    def test_edit_to_invalid_restores_original(
+        self, transaction_service, account_for_transactions
+    ):
+        """When editing a BUY to have quantity=0 (invalid), the original should be preserved."""
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="AAPL",
+            quantity=Decimal("10"),
+            price=Decimal("100"),
+            txn_id="edit-safe",
+        )
+        transaction_service.create_transaction(txn)
+        with pytest.raises(ValidationError):
+            transaction_service.edit_transaction(
+                TransactionEdit(txn_id="edit-safe", quantity=Decimal("0"))
+            )
+        # Original should still be intact
+        original = transaction_service.get_transaction("edit-safe")
+        assert original["txn_id"] == "edit-safe"
+        assert float(original["quantity"]) == 10.0
+        assert float(original["price"]) == 100.0
+
+    def test_edit_to_nonexistent_account_restores_original(
+        self, transaction_service, account_for_transactions
+    ):
+        """When editing to a nonexistent account, the original should be preserved."""
+        txn = make_transaction_create(
+            account_name=account_for_transactions,
+            txn_type=TransactionType.BUY,
+            symbol="MSFT",
+            quantity=Decimal("5"),
+            price=Decimal("200"),
+            txn_id="edit-safe-acc",
+        )
+        transaction_service.create_transaction(txn)
+        with pytest.raises(NotFoundError):
+            transaction_service.edit_transaction(
+                TransactionEdit(txn_id="edit-safe-acc", account_name="NonExistentBroker")
+            )
+        # Original should still be intact
+        original = transaction_service.get_transaction("edit-safe-acc")
+        assert original["account_name"] == account_for_transactions
+        assert original["symbol"] == "MSFT"

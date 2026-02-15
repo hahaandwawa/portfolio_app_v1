@@ -63,8 +63,14 @@ def _get_transaction_service() -> TransactionService:
     return _txn_svc
 
 
+_acct_svc: Optional[AccountService] = None
+
+
 def _get_account_service() -> AccountService:
-    return AccountService()
+    global _acct_svc
+    if _acct_svc is None:
+        _acct_svc = AccountService()
+    return _acct_svc
 
 
 def _row_to_out(row: dict) -> TransactionOut:
@@ -105,13 +111,15 @@ def list_transactions(
     """
     svc = _get_transaction_service()
     account_names = account if account else None
-    rows = svc.list_transactions(account_names=account_names)
-    total = len(rows)
+    total = svc.count_transactions(account_names=account_names)
     total_pages = max(1, math.ceil(total / page_size))
-    start = (page - 1) * page_size
-    end = start + page_size
-    page_rows = rows[start:end]
-    items = [_row_to_out(r) for r in page_rows]
+    offset = (page - 1) * page_size
+    rows = svc.list_transactions(
+        account_names=account_names,
+        limit=page_size,
+        offset=offset,
+    )
+    items = [_row_to_out(r) for r in rows]
     return TransactionListResponse(
         items=items,
         total=total,
@@ -287,9 +295,6 @@ def update_transaction(txn_id: str, data: TransactionEditSchema):
 
 @router.delete("/{txn_id}", status_code=204)
 def delete_transaction(txn_id: str):
-    """Delete a transaction."""
+    """Delete a transaction (idempotent)."""
     svc = _get_transaction_service()
-    try:
-        svc.delete_transaction(txn_id)
-    except NotFoundError as e:
-        raise HTTPException(status_code=404, detail=e.message)
+    svc.delete_transaction(txn_id)

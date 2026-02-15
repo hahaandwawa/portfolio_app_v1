@@ -34,7 +34,7 @@ export function TopBar({
                 投资记录
               </h1>
               <p className="text-xs text-[var(--text-muted)]">
-                私密投资仪表盘
+                投资小助手
               </p>
             </div>
           </div>

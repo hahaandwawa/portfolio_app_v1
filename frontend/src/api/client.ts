@@ -1,3 +1,13 @@
+import type {
+  Account,
+  Transaction,
+  TransactionListResponse,
+  TransactionPayload,
+  TransactionImportResult,
+  PortfolioSummary,
+  PositionsBySymbolResponse,
+} from "../types";
+
 const API_BASE = "/api";
 
 async function fetchApi<T>(
@@ -5,13 +15,12 @@ async function fetchApi<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  });
+  const headers: HeadersInit = { ...options?.headers };
+  // Only set Content-Type for requests that carry a body
+  if (options?.body) {
+    (headers as Record<string, string>)["Content-Type"] ??= "application/json";
+  }
+  const res = await fetch(url, { ...options, headers });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail));
@@ -33,110 +42,102 @@ async function getApiError(res: Response): Promise<string> {
   }
 }
 
+/** Build URLSearchParams with optional account filter. */
+function accountSearchParams(accounts?: string[]): URLSearchParams {
+  const search = new URLSearchParams();
+  if (accounts?.length) {
+    accounts.forEach((a) => search.append("account", a));
+  }
+  return search;
+}
+
+/** Append query string to path if non-empty. */
+function withQuery(path: string, search: URLSearchParams): string {
+  const qs = search.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
 export const api = {
-  getAccounts: () =>
-    fetchApi<{ name: string; transaction_count: number }[]>("/accounts"),
+  getAccounts: () => fetchApi<Account[]>("/accounts"),
+
   postAccount: (name: string) =>
-    fetchApi<{ name: string; transaction_count: number }>("/accounts", {
+    fetchApi<Account>("/accounts", {
       method: "POST",
       body: JSON.stringify({ name }),
     }),
+
   putAccount: (oldName: string, newName: string) =>
-    fetchApi<{ name: string; transaction_count: number }>(
-      `/accounts/${encodeURIComponent(oldName)}`,
-      { method: "PUT", body: JSON.stringify({ name: newName }) }
-    ),
+    fetchApi<Account>(`/accounts/${encodeURIComponent(oldName)}`, {
+      method: "PUT",
+      body: JSON.stringify({ name: newName }),
+    }),
+
   deleteAccount: (name: string) =>
     fetchApi<void>(`/accounts/${encodeURIComponent(name)}`, {
       method: "DELETE",
     }),
-  getTransactions: (params: { account?: string[]; page?: number; page_size?: number }) => {
-    const search = new URLSearchParams();
-    if (params.account?.length) {
-      params.account.forEach((a) => search.append("account", a));
-    }
+
+  getTransactions(params: { account?: string[]; page?: number; page_size?: number }) {
+    const search = accountSearchParams(params.account);
     if (params.page) search.set("page", String(params.page));
     if (params.page_size) search.set("page_size", String(params.page_size));
-    const qs = search.toString();
-    return fetchApi<{
-      items: import("../types").Transaction[];
-      total: number;
-      page: number;
-      page_size: number;
-      total_pages: number;
-    }>(`/transactions${qs ? `?${qs}` : ""}`);
+    return fetchApi<TransactionListResponse>(withQuery("/transactions", search));
   },
-  postTransaction: (data: import("../types").TransactionCreatePayload) =>
-    fetchApi<import("../types").Transaction>("/transactions", {
+
+  postTransaction: (data: TransactionPayload) =>
+    fetchApi<Transaction>("/transactions", {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  putTransaction: (txnId: string, data: import("../types").TransactionEditPayload) =>
-    fetchApi<import("../types").Transaction>(`/transactions/${txnId}`, {
+
+  putTransaction: (txnId: string, data: TransactionPayload) =>
+    fetchApi<Transaction>(`/transactions/${txnId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
+
   deleteTransaction: (txnId: string) =>
     fetchApi<void>(`/transactions/${txnId}`, { method: "DELETE" }),
 
   /** POST CSV file; returns import result. */
-  async importTransactionsCsv(file: File): Promise<import("../types").TransactionImportResult> {
-    const url = `${API_BASE}/transactions/import`;
+  async importTransactionsCsv(file: File): Promise<TransactionImportResult> {
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}/transactions/import`, {
       method: "POST",
       body: form,
-      headers: {}, // do not set Content-Type; browser sets multipart boundary
+      // Do not set Content-Type; browser sets multipart boundary automatically
     });
-    if (!res.ok) {
-      const msg = await getApiError(res);
-      throw new Error(msg);
-    }
+    if (!res.ok) throw new Error(await getApiError(res));
     return res.json();
   },
 
   /** GET CSV blob and trigger download. Optional account filter. */
   async exportTransactionsCsv(params?: { account?: string[] }): Promise<Blob> {
-    const search = new URLSearchParams();
-    if (params?.account?.length) {
-      params.account.forEach((a) => search.append("account", a));
-    }
-    const qs = search.toString();
-    const url = `${API_BASE}/transactions/export${qs ? `?${qs}` : ""}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      const msg = await getApiError(res);
-      throw new Error(msg);
-    }
+    const search = accountSearchParams(params?.account);
+    const res = await fetch(withQuery(`${API_BASE}/transactions/export`, search));
+    if (!res.ok) throw new Error(await getApiError(res));
     return res.blob();
   },
 
   /** GET template CSV and trigger download. */
   async downloadTransactionsTemplate(): Promise<Blob> {
-    const url = `${API_BASE}/transactions/template`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      const msg = await getApiError(res);
-      throw new Error(msg);
-    }
+    const res = await fetch(`${API_BASE}/transactions/template`);
+    if (!res.ok) throw new Error(await getApiError(res));
     return res.blob();
   },
 
   /** GET portfolio summary (positions + per-account cash). Optional account filter. */
-  getPortfolio(params?: { account?: string[] }): Promise<import("../types").PortfolioSummary> {
-    const search = new URLSearchParams();
-    if (params?.account?.length) {
-      params.account.forEach((a) => search.append("account", a));
-    }
-    const qs = search.toString();
-    return fetchApi<import("../types").PortfolioSummary>(`/portfolio${qs ? `?${qs}` : ""}`);
+  getPortfolio(params?: { account?: string[] }): Promise<PortfolioSummary> {
+    const search = accountSearchParams(params?.account);
+    return fetchApi<PortfolioSummary>(withQuery("/portfolio", search));
   },
 
   /** GET per-account quantities for a symbol (for SELL default account / cash destination). */
-  getPositionsBySymbol(symbol: string): Promise<import("../types").PositionsBySymbolResponse> {
-    if (!symbol?.trim()) return Promise.resolve({ symbol: symbol?.trim().toUpperCase() ?? "", positions: [] });
-    const q = new URLSearchParams({ symbol: symbol.trim().toUpperCase() });
-    return fetchApi<import("../types").PositionsBySymbolResponse>(`/portfolio/positions-by-symbol?${q}`);
+  getPositionsBySymbol(symbol: string): Promise<PositionsBySymbolResponse> {
+    const trimmed = symbol?.trim().toUpperCase() ?? "";
+    if (!trimmed) return Promise.resolve({ symbol: trimmed, positions: [] });
+    const search = new URLSearchParams({ symbol: trimmed });
+    return fetchApi<PositionsBySymbolResponse>(`/portfolio/positions-by-symbol?${search}`);
   },
 };
