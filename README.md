@@ -291,6 +291,7 @@ For detailed technical documentation, see:
 - [Design Document](./docs/NET_VALUE_CURVE_DESIGN.md) — Architecture and implementation details
 - [Testing Guide](./docs/NET_VALUE_CURVE_TESTING.md) — Test coverage and scenarios
 - [User Guide](./docs/NET_VALUE_CURVE_USER_GUIDE.md) — Comprehensive user guide
+- [Packaging Plan](./docs/PACKAGING_PLAN.md) — macOS .dmg embedding (Electron + PyInstaller); backend uses `APP_DATA_DIR`, `BACKEND_PORT`, `/health`; entrypoint: `python entrypoint.py`
 
 ---
 

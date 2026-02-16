@@ -21,7 +21,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "file://",
+        "null",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,3 +41,9 @@ app.include_router(net_value.router)
 @app.get("/")
 def root():
     return {"message": "投资记录 API", "docs": "/docs"}
+
+
+@app.get("/health")
+def health():
+    """Health check for Electron/load balancers. Returns quickly."""
+    return {"status": "ok"}

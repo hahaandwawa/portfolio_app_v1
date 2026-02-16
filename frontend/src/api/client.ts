@@ -9,13 +9,17 @@ import type {
   NetValueCurveResponse,
 } from "../types";
 
-const API_BASE = "/api";
+/** In packaged app (Electron), window.BACKEND_URL is set. In dev we use /api (proxied). */
+const API_BASE =
+  (typeof window !== "undefined" && (window as unknown as { BACKEND_URL?: string }).BACKEND_URL) ||
+  (import.meta.env.DEV ? "/api" : "http://127.0.0.1:8001");
 
 async function fetchApi<T>(
   path: string,
   options?: RequestInit
 ): Promise<T> {
-  const url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+  const base = API_BASE.replace(/\/$/, "");
+  const url = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : "/" + path}`;
   const headers: HeadersInit = { ...options?.headers };
   // Only set Content-Type for requests that carry a body
   if (options?.body) {
