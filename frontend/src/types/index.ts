@@ -84,3 +84,17 @@ export interface PositionsBySymbolResponse {
   symbol: string;
   positions: PositionByAccount[];
 }
+
+/** Net value curve API response (GET /net-value-curve). Columnar arrays; tooltips use index i. */
+export interface NetValueCurveResponse {
+  baseline_label: string;
+  price_type: string;
+  includes_cash: boolean;
+  dates: string[];
+  baseline: number[];
+  market_value: number[];
+  profit_loss: number[];
+  profit_loss_pct: (number | null)[];
+  is_trading_day: boolean[];
+  last_trading_date: string[];
+}

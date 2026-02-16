@@ -44,13 +44,35 @@ def _create_transactions_schema(conn: sqlite3.Connection) -> None:
         conn.commit()
 
 
+def _create_historical_prices_schema(conn: sqlite3.Connection) -> None:
+    """Historical prices cache (symbol, date) -> close; used by net value curve. V1 uses close (unadjusted)."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS historical_prices (
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            close_price REAL NOT NULL,
+            adj_close_price REAL,
+            price_type TEXT NOT NULL DEFAULT 'close',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (symbol, date)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_date ON historical_prices(symbol, date)"
+    )
+    conn.commit()
+
+
 def init_database() -> None:
     """Create data directory and schema if they don't exist."""
     config = _load_config()
     account_path = config.get("AccountDBPath", "./data/accounts.sqlite")
     txn_path = config.get("TransactionDBPath", "./data/transactions.sqlite")
+    prices_path = config.get("HistoricalPricesDBPath", "./data/historical_prices.sqlite")
 
-    for path_str in (account_path, txn_path):
+    for path_str in (account_path, txn_path, prices_path):
         Path(path_str).parent.mkdir(parents=True, exist_ok=True)
 
     conn_acc = sqlite3.connect(account_path)
@@ -64,3 +86,9 @@ def init_database() -> None:
         _create_transactions_schema(conn_txn)
     finally:
         conn_txn.close()
+
+    conn_prices = sqlite3.connect(prices_path)
+    try:
+        _create_historical_prices_schema(conn_prices)
+    finally:
+        conn_prices.close()

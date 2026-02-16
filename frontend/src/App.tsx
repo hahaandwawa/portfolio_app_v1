@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { TopBar } from "./components/TopBar/TopBar";
 import { GeneralOverviewBlock } from "./components/GeneralOverviewBlock/GeneralOverviewBlock";
+import { NetValueCurve } from "./components/NetValueCurve/NetValueCurve";
 import { AccountManagementBlock } from "./components/AccountManagementBlock/AccountManagementBlock";
 import { PortfolioBlock } from "./components/PortfolioBlock/PortfolioBlock";
 import { TransactionBlock } from "./components/TransactionBlock/TransactionBlock";
 import { Footer } from "./components/Footer";
 import { api } from "./api/client";
-import type { Account, PortfolioSummary } from "./types";
+import type { Account, PortfolioSummary, NetValueCurveResponse } from "./types";
 
 function App() {
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -17,6 +18,11 @@ function App() {
   const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [portfolioLoading, setPortfolioLoading] = useState(true);
   const [portfolioError, setPortfolioError] = useState<string | null>(null);
+
+  const [netValueCurve, setNetValueCurve] = useState<NetValueCurveResponse | null>(null);
+  const [netValueCurveLoading, setNetValueCurveLoading] = useState(true);
+  const [netValueCurveError, setNetValueCurveError] = useState<string | null>(null);
+  const [includeCash, setIncludeCash] = useState(true);
 
   const loadAccounts = useCallback(() => {
     api
@@ -64,6 +70,36 @@ function App() {
     };
   }, [selectedAccountNames, refreshKey]);
 
+  useEffect(() => {
+    if (selectedAccountNames.size === 0) {
+      setNetValueCurve(null);
+      setNetValueCurveLoading(false);
+      setNetValueCurveError(null);
+      return;
+    }
+    let cancelled = false;
+    const accountParam = Array.from(selectedAccountNames);
+    setNetValueCurveLoading(true);
+    setNetValueCurveError(null);
+    api
+      .getNetValueCurve({ account: accountParam, include_cash: includeCash })
+      .then((data) => {
+        if (!cancelled) setNetValueCurve(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setNetValueCurveError(err instanceof Error ? err.message : "加载失败");
+          setNetValueCurve(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setNetValueCurveLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAccountNames, refreshKey, includeCash]);
+
   const accountCashList = portfolio?.account_cash;
   const accountCashMap = useMemo(() => {
     if (!accountCashList) return undefined;
@@ -84,6 +120,8 @@ function App() {
     setRefreshKey((k) => k + 1);
     setPortfolioLoading(true);
     setPortfolioError(null);
+    setNetValueCurveLoading(true);
+    setNetValueCurveError(null);
     loadAccounts();
   }, [loadAccounts]);
 
@@ -120,6 +158,15 @@ function App() {
             positions={portfolio?.positions ?? []}
             loading={portfolioLoading}
             error={portfolioError}
+          />
+          <NetValueCurve
+            data={netValueCurve}
+            loading={netValueCurveLoading}
+            error={netValueCurveError}
+            selectedAccountNames={selectedAccountNames}
+            includeCash={includeCash}
+            onIncludeCashChange={setIncludeCash}
+            onRetry={onRefresh}
           />
           <TransactionBlock
             accounts={accounts}

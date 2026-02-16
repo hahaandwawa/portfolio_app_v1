@@ -6,6 +6,7 @@ import type {
   TransactionImportResult,
   PortfolioSummary,
   PositionsBySymbolResponse,
+  NetValueCurveResponse,
 } from "../types";
 
 const API_BASE = "/api";
@@ -139,5 +140,21 @@ export const api = {
     if (!trimmed) return Promise.resolve({ symbol: trimmed, positions: [] });
     const search = new URLSearchParams({ symbol: trimmed });
     return fetchApi<PositionsBySymbolResponse>(`/portfolio/positions-by-symbol?${search}`);
+  },
+
+  /** GET net value curve (baseline + market value over time). */
+  getNetValueCurve(params: {
+    account?: string[];
+    start_date?: string;
+    end_date?: string;
+    include_cash?: boolean;
+    refresh?: boolean;
+  }): Promise<NetValueCurveResponse> {
+    const search = accountSearchParams(params.account);
+    if (params.start_date) search.set("start_date", params.start_date);
+    if (params.end_date) search.set("end_date", params.end_date);
+    search.set("include_cash", (params.include_cash !== false).toString());
+    if (params.refresh) search.set("refresh", "true");
+    return fetchApi<NetValueCurveResponse>(withQuery("/net-value-curve", search));
   },
 };

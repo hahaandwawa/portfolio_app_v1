@@ -61,6 +61,26 @@ def _create_transactions_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _create_historical_prices_schema(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS historical_prices (
+            symbol TEXT NOT NULL,
+            date TEXT NOT NULL,
+            close_price REAL NOT NULL,
+            adj_close_price REAL,
+            price_type TEXT NOT NULL DEFAULT 'close',
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (symbol, date)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_historical_prices_symbol_date ON historical_prices(symbol, date)"
+    )
+    conn.commit()
+
+
 @pytest.fixture
 def test_cache_dir():
     """Ensure test cache dir exists; yield path; optionally clean single-run DBs."""
@@ -109,6 +129,16 @@ def transaction_service(account_db_path, transaction_db_path):
         transaction_db_path=transaction_db_path,
         account_db_path=account_db_path,
     )
+
+
+@pytest.fixture
+def historical_prices_db_path(temp_db_dir):
+    """Path to a fresh historical_prices DB with schema."""
+    path = temp_db_dir / "historical_prices.sqlite"
+    conn = sqlite3.connect(str(path))
+    _create_historical_prices_schema(conn)
+    conn.close()
+    return str(path)
 
 
 @pytest.fixture
@@ -167,12 +197,13 @@ def make_transaction_create(
     note: str = None,
     txn_id: str = None,
     cash_destination_account: str = None,
+    txn_time_est=None,
 ):
-    """Build TransactionCreate; defaults for BUY; use cash_amount for CASH_*."""
+    """Build TransactionCreate; defaults for BUY; use cash_amount for CASH_*; txn_time_est optional."""
     from datetime import datetime
     from decimal import Decimal
 
-    now = datetime(2025, 1, 15, 12, 0, 0)
+    now = datetime(2025, 1, 15, 12, 0, 0) if txn_time_est is None else txn_time_est
     if quantity is None and txn_type in (TransactionType.BUY, TransactionType.SELL):
         quantity = Decimal("10")
     if price is None and txn_type in (TransactionType.BUY, TransactionType.SELL):
