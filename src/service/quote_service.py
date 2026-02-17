@@ -16,7 +16,8 @@ def _get_yf():
 
 
 DEFAULT_TTL_SECONDS = 120
-DEFAULT_FETCH_TIMEOUT_SECONDS = 10
+# Longer timeout for packaged app where first yfinance call can be slow (SSL, DNS, cold start).
+DEFAULT_FETCH_TIMEOUT_SECONDS = 25
 
 
 def _safe_quote_for_symbol(symbol: str, tickers_obj) -> tuple[Optional[float], str, Optional[float]]:
@@ -83,6 +84,24 @@ class QuoteService:
         # Cache: symbol -> (current_price, display_name, previous_close, cached_at)
         self._cache: dict[str, tuple[Optional[float], str, Optional[float], float]] = {}
 
+    def _fetch_with_retry(self, to_fetch: list[str]) -> dict[str, dict]:
+        """Fetch quotes with timeout; retry once if all results are empty (e.g. slow first call in packaged app)."""
+        for attempt in range(2):
+            try:
+                with ThreadPoolExecutor(max_workers=1) as ex:
+                    fut = ex.submit(_fetch_quotes_impl, to_fetch)
+                    fetched = fut.result(timeout=self._fetch_timeout)
+            except (FuturesTimeoutError, Exception):
+                fetched = {}
+                for sym in to_fetch:
+                    fetched[sym] = {"current_price": None, "display_name": sym, "previous_close": None}
+            # If we got at least one valid price, use it; else retry once.
+            if any((fetched.get(s) or {}).get("current_price") is not None for s in to_fetch):
+                return fetched
+            if attempt == 0:
+                time.sleep(1)  # Brief pause before retry
+        return fetched
+
     def get_quotes(self, symbols: list[str]) -> dict[str, dict]:
         """
         Return for each symbol: { "current_price": float | None, "display_name": str, "previous_close": float | None }.
@@ -106,15 +125,7 @@ class QuoteService:
             to_fetch.append(key)
 
         if to_fetch:
-            try:
-                with ThreadPoolExecutor(max_workers=1) as ex:
-                    fut = ex.submit(_fetch_quotes_impl, to_fetch)
-                    fetched = fut.result(timeout=self._fetch_timeout)
-            except (FuturesTimeoutError, Exception):
-                fetched = {}
-                for sym in to_fetch:
-                    fetched[sym] = {"current_price": None, "display_name": sym, "previous_close": None}
-
+            fetched = self._fetch_with_retry(to_fetch)
             for sym in to_fetch:
                 data = fetched.get(sym) or {"current_price": None, "display_name": sym, "previous_close": None}
                 price = data.get("current_price")

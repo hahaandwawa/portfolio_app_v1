@@ -2,12 +2,16 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Callable, List, Optional
+import logging
+import os
 import sqlite3
 import uuid
 
 from src.service.enums import TransactionType
 from src.utils.exceptions import ValidationError, NotFoundError
 from src.service.util import _load_config, normalize_symbol
+
+logger = logging.getLogger(__name__)
 
 _INSERT_SQL = """
 INSERT INTO transactions (
@@ -85,11 +89,20 @@ class TransactionService:
             if not data.symbol:
                 raise ValidationError(f"{data.txn_type.value} requires a valid symbol")
             norm_symbol = normalize_symbol(data.symbol)
-            if self._quote_service and norm_symbol:
+            skip_validation = os.environ.get("SKIP_SYMBOL_VALIDATION", "").strip().lower() in ("1", "true", "yes")
+            if self._quote_service and norm_symbol and not skip_validation:
                 quotes = self._quote_service.get_quotes([norm_symbol])
                 q = quotes.get(norm_symbol) or {}
                 if not _is_symbol_valid(q, data.symbol):
-                    raise ValidationError(f"Invalid or unknown symbol: {norm_symbol}")
+                    logger.warning(
+                        "Symbol validation failed for %s: quote_data=%s (often due to yfinance timeout or no network)",
+                        norm_symbol,
+                        q,
+                    )
+                    raise ValidationError(
+                        f"Invalid or unknown symbol: {norm_symbol}. "
+                        "If you are offline or on a restricted network, set SKIP_SYMBOL_VALIDATION=1 and restart the app to add transactions without quote checks."
+                    )
             if data.quantity is None or data.quantity <= 0:
                 raise ValidationError(f"{data.txn_type.value} requires quantity > 0")
             if data.price is None or data.price < 0:

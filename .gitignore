@@ -49,6 +49,9 @@ dist/
 build/
 *.egg-info/
 .eggs/
+electron/resources/
+electron/dist/
+electron/node_modules/
 
 # Logs
 *.log

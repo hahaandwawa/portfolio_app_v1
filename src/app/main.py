@@ -27,6 +27,7 @@ app.add_middleware(
         "file://",
         "null",
     ],
+    allow_origin_regex=r"^(file://|http://127\.0\.0\.1|http://localhost|null).*",  # Electron + dev
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

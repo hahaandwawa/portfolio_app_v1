@@ -291,7 +291,7 @@ For detailed technical documentation, see:
 - [Design Document](./docs/NET_VALUE_CURVE_DESIGN.md) — Architecture and implementation details
 - [Testing Guide](./docs/NET_VALUE_CURVE_TESTING.md) — Test coverage and scenarios
 - [User Guide](./docs/NET_VALUE_CURVE_USER_GUIDE.md) — Comprehensive user guide
-- [Packaging Plan](./docs/PACKAGING_PLAN.md) — macOS .dmg embedding (Electron + PyInstaller); backend uses `APP_DATA_DIR`, `BACKEND_PORT`, `/health`; entrypoint: `python entrypoint.py`
+- [Packaging Plan](./docs/PACKAGING_PLAN.md) — macOS .dmg architecture (Electron + PyInstaller). See also **Building the app** below for the build command.
 
 ---
 
@@ -320,6 +320,55 @@ python scripts/generate_test_data_advanced.py
 ```
 GET /net-value-curve?account=AccountName&start_date=2024-01-01&end_date=2024-12-31&include_cash=true
 ```
+
+---
+
+## Building the app (macOS .dmg)
+
+You can package the application as a macOS desktop app (.dmg) so users can install it without running Python or Node.
+
+### Prerequisites
+
+- **Node.js** and **npm** (for frontend and Electron)
+- **Python 3** with **pip** (for backend)
+- **macOS** (the build produces an arm64 DMG; Intel can be added via electron-builder config)
+
+### Build command
+
+From the repository root:
+
+```bash
+./scripts/build_macos.sh
+```
+
+The script will:
+
+1. Build the React frontend (`frontend/dist/`)
+2. Bundle the FastAPI backend into a single executable with PyInstaller
+3. Copy frontend and backend into `electron/resources/`
+4. Build the Electron app and create the DMG
+
+### Output
+
+When the build succeeds, the DMG is written to:
+
+```
+electron/dist/Portfolio App-<version>-arm64.dmg
+```
+
+Example: `electron/dist/Portfolio App-1.0.0-arm64.dmg`.
+
+Users can open the DMG, drag **Portfolio App** to **Applications**, and run it. Data is stored under `~/Library/Application Support/portfolio-app/`.
+
+### Uninstall
+
+- Remove the app from **Applications** (drag to Trash).
+- Optionally delete app data:  
+  `rm -rf ~/Library/Application\ Support/portfolio-app`
+
+### Detailed packaging design
+
+See [Packaging Plan](./docs/PACKAGING_PLAN.md) for architecture (Electron shell, PyInstaller backend, CORS, data paths, and testing).
 
 ---
 
